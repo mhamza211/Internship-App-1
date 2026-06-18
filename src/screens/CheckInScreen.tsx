@@ -18,6 +18,8 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import Geolocation from '@react-native-community/geolocation';
 import { launchCamera } from 'react-native-image-picker';
+import { saveAttendance } from '../lib/attendance';   // ← SUPABASE
+import { CheckInData } from '../types/attendance';    // ← SUPABASE
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -265,11 +267,31 @@ export default function CheckInScreen() {
     );
   };
 
+  // ── UPDATED: now saves to Supabase ──────────────────────────────────────
   const handleConfirm = async () => {
+    if (!location || !photoUri) {
+      Alert.alert('Error', 'Missing GPS or photo data. Please start again.');
+      return;
+    }
+
     setSubmitting(true);
-    await new Promise<void>(resolve => setTimeout(resolve, 1800));
+
+    const checkInData: CheckInData = {
+      latitude: location.latitude,
+      longitude: location.longitude,
+      photoUri,
+    };
+
+    // Save to Supabase
+    const result = await saveAttendance(checkInData);
+
     setSubmitting(false);
-    animateStep(5);
+
+    if (result.success) {
+      animateStep(5);
+    } else {
+      Alert.alert('Check-In Failed', result.error || 'Please try again.');
+    }
   };
 
   const formatCoord = (val: number, posLabel: string, negLabel: string) => {
@@ -542,6 +564,7 @@ export default function CheckInScreen() {
         <Text style={styles.charCount}>{notes.length}/200</Text>
       </View>
 
+      {/* ── Confirm button now saves to Supabase ── */}
       <TouchableOpacity
         style={[styles.continueBtn, submitting && styles.continueBtnDisabled]}
         onPress={handleConfirm}
@@ -549,7 +572,12 @@ export default function CheckInScreen() {
         activeOpacity={0.85}
       >
         {submitting
-          ? <ActivityIndicator color="#FFF" />
+          ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <ActivityIndicator color="#FFF" />
+              <Text style={styles.continueBtnText}>Saving to database...</Text>
+            </View>
+          )
           : <Text style={styles.continueBtnText}>Confirm Check-In ✓</Text>}
       </TouchableOpacity>
     </ScrollView>
@@ -567,7 +595,7 @@ export default function CheckInScreen() {
         </View>
       </View>
       <Text style={styles.doneTitle}>Check-In Complete!</Text>
-      <Text style={styles.doneSub}>Your attendance has been recorded successfully.</Text>
+      <Text style={styles.doneSub}>Your attendance has been saved to the database.</Text>
       <View style={styles.doneSummary}>
         <View style={styles.doneSummaryRow}>
           <Text style={styles.doneSummaryLabel}>Location</Text>
@@ -582,6 +610,10 @@ export default function CheckInScreen() {
         <View style={styles.doneSummaryRow}>
           <Text style={styles.doneSummaryLabel}>Status</Text>
           <Text style={[styles.doneSummaryValue, { color: GREEN }]}>Present ✓</Text>
+        </View>
+        <View style={styles.doneSummaryRow}>
+          <Text style={styles.doneSummaryLabel}>Saved</Text>
+          <Text style={[styles.doneSummaryValue, { color: GREEN }]}>Supabase ✓</Text>
         </View>
       </View>
       <TouchableOpacity style={styles.doneHomeBtn} onPress={() => navigation.goBack()} activeOpacity={0.85}>
