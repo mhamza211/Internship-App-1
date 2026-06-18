@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,16 @@ import {
   SafeAreaView,
   Platform,
   TextInput,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
+import { fetchMyAttendance } from '../lib/attendance';
+import { AttendanceRecord } from '../types/attendance';
+import RNFS from 'react-native-fs';
+import Share from 'react-native-share';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Attendance'>;
 
@@ -30,16 +36,6 @@ type AttendanceEntry = {
   hours: string;
 };
 
-const ENTRIES: AttendanceEntry[] = [
-  { id: '1', date: 'Jun 09', timeIn: '09:00 AM', timeOut: '05:30 PM', status: 'Present', location: 'Main Office', hours: '8h 30m' },
-  { id: '2', date: 'Jun 08', timeIn: '08:55 AM', timeOut: '05:45 PM', status: 'Present', location: 'Main Office', hours: '8h 50m' },
-  { id: '3', date: 'Jun 07', timeIn: '09:10 AM', timeOut: '05:20 PM', status: 'Late',    location: 'Remote',      hours: '8h 10m' },
-  { id: '4', date: 'Jun 06', timeIn: '--',        timeOut: '--',        status: 'Absent',  location: '--',          hours: '0h' },
-  { id: '5', date: 'Jun 05', timeIn: '09:00 AM', timeOut: '05:30 PM', status: 'Present', location: 'Main Office', hours: '8h 30m' },
-  { id: '6', date: 'Jun 04', timeIn: '08:50 AM', timeOut: '05:00 PM', status: 'Present', location: 'Main Office', hours: '8h 10m' },
-  { id: '7', date: 'Jun 03', timeIn: '09:30 AM', timeOut: '05:30 PM', status: 'Late',    location: 'Main Office', hours: '8h 00m' },
-];
-
 type FilterType = 'All' | 'Present' | 'Late' | 'Absent';
 
 function StatusBadge({ status }: { status: AttendanceEntry['status'] }) {
@@ -56,13 +52,106 @@ function StatusBadge({ status }: { status: AttendanceEntry['status'] }) {
   );
 }
 
+// Builds one display row out of a real Supabase record
+function mapRecordToEntry(record: AttendanceRecord, day: Date): AttendanceEntry {
+  const timeIn = new Date(record.check_in_time).toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const statusMap: Record<AttendanceRecord['status'], AttendanceEntry['status']> = {
+    present: 'Present',
+    late: 'Late',
+    absent: 'Absent',
+  };
+  return {
+    id: record.id,
+    date: day.toLocaleDateString('en-US', { month: 'short', day: '2-digit' }),
+    timeIn,
+    timeOut: '--', // no check-out tracking in the schema yet
+    status: statusMap[record.status],
+    location: record.address || 'Location unavailable',
+    hours: '--', // can't be computed without a check-out time
+  };
+}
+
 export default function AttendanceScreen() {
   const navigation = useNavigation<NavigationProp>();
   const [activeTab, setActiveTab] = useState<'Home' | 'Attendance' | 'History' | 'Settings'>('Attendance');
   const [filter, setFilter] = useState<FilterType>('All');
   const [search, setSearch] = useState('');
 
-  const filtered = ENTRIES.filter(e => {
+  const [entries, setEntries] = useState<AttendanceEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    loadAttendance();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadAttendance();
+    });
+    return unsubscribe;
+  }, [navigation]);
+
+  const loadAttendance = async () => {
+    setLoading(true);
+    try {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const todayDate = now.getDate();
+
+      // 60 covers a full month of daily check-ins comfortably
+      const records = await fetchMyAttendance(60);
+
+      const monthRecords = records.filter(r => {
+        const d = new Date(r.check_in_time);
+        return d.getFullYear() === year && d.getMonth() === month;
+      });
+
+      // records are newest-first, so the first one we see per day is the one we keep
+      const recordsByDay = new Map<number, AttendanceRecord>();
+      monthRecords.forEach(r => {
+        const day = new Date(r.check_in_time).getDate();
+        if (!recordsByDay.has(day)) recordsByDay.set(day, r);
+      });
+
+      const built: AttendanceEntry[] = [];
+
+      // Walk from today back to the 1st of the month
+      for (let day = todayDate; day >= 1; day--) {
+        const d = new Date(year, month, day);
+        const dow = d.getDay(); // 0 = Sun, 6 = Sat
+        const isWorkday = dow !== 0 && dow !== 6; // assumes Mon–Fri work week
+        const record = recordsByDay.get(day);
+
+        if (record) {
+          built.push(mapRecordToEntry(record, d));
+        } else if (isWorkday && day < todayDate) {
+          // a working day already passed with no check-in record = absent
+          built.push({
+            id: `absent-${year}-${month}-${day}`,
+            date: d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' }),
+            timeIn: '--',
+            timeOut: '--',
+            status: 'Absent',
+            location: '--',
+            hours: '0h',
+          });
+        }
+        // today with no record yet, or weekends, are simply skipped (not absent yet / not a workday)
+      }
+
+      setEntries(built);
+    } catch (e) {
+      console.error('Failed to load attendance:', e);
+    }
+    setLoading(false);
+  };
+
+  const filtered = entries.filter(e => {
     const matchFilter = filter === 'All' || e.status === filter;
     const matchSearch = search === '' ||
       e.location.toLowerCase().includes(search.toLowerCase()) ||
@@ -71,10 +160,63 @@ export default function AttendanceScreen() {
     return matchFilter && matchSearch;
   });
 
-  const totalDays = 20;
-  const presentDays = ENTRIES.filter(e => e.status === 'Present').length;
-  const lateDays    = ENTRIES.filter(e => e.status === 'Late').length;
-  const absentDays  = ENTRIES.filter(e => e.status === 'Absent').length;
+  const totalDays   = entries.length;
+  const presentDays = entries.filter(e => e.status === 'Present').length;
+  const lateDays    = entries.filter(e => e.status === 'Late').length;
+  const absentDays  = entries.filter(e => e.status === 'Absent').length;
+
+  // ── Export full month history as CSV, then hand it to the native share sheet ──
+  const handleExport = async () => {
+    if (entries.length === 0) {
+      Alert.alert('Nothing to Export', 'There are no attendance records for this month yet.');
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const now = new Date();
+      const monthLabel = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+      const summaryLines = [
+        `Attendance Report - ${monthLabel}`,
+        `Total Days,${totalDays}`,
+        `Present,${presentDays}`,
+        `Late,${lateDays}`,
+        `Absent,${absentDays}`,
+        '',
+        'Date,Status,Check-In Time,Hours,Location',
+      ];
+
+      const dataLines = entries.map(e => {
+        const safeLocation = e.location.replace(/"/g, '""'); // escape quotes for CSV
+        return `${e.date},${e.status},${e.timeIn},${e.hours},"${safeLocation}"`;
+      });
+
+      const csvContent = [...summaryLines, ...dataLines].join('\n');
+
+      const fileName = `Attendance_${now.toLocaleDateString('en-US', { month: 'short' })}_${now.getFullYear()}.csv`;
+      // App-private storage — no Android permissions needed to write here
+      const filePath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+
+      await RNFS.writeFile(filePath, csvContent, 'utf8');
+
+      await Share.open({
+        title: 'Export Attendance History',
+        url: Platform.OS === 'android' ? `file://${filePath}` : filePath,
+        type: 'text/csv',
+        filename: fileName,
+        failOnCancel: false, // don't throw when the user just closes the share sheet
+      });
+    } catch (error: any) {
+      // react-native-share throws when the user cancels — ignore that case
+      if (error?.message !== 'User did not share') {
+        console.error('Export failed:', error);
+        Alert.alert('Export Failed', 'Something went wrong while exporting your attendance history.');
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -99,45 +241,53 @@ export default function AttendanceScreen() {
         {/* Month summary strip */}
         <View style={styles.monthStrip}>
           <Text style={styles.monthStripLabel}>This Month</Text>
-          <Text style={styles.monthStripValue}>
-            {presentDays} present  •  {lateDays} late  •  {absentDays} absent
-          </Text>
+          {loading ? (
+            <ActivityIndicator color="#fff" size="small" style={{ marginTop: 4, alignSelf: 'flex-start' }} />
+          ) : (
+            <Text style={styles.monthStripValue}>
+              {presentDays} present  •  {lateDays} late  •  {absentDays} absent
+            </Text>
+          )}
         </View>
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
         {/* ── Stats Grid ── */}
-        <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
-            <View style={[styles.statIconBox, { backgroundColor: '#E8F5E9' }]}>
-              <Text style={styles.statIcon}>📅</Text>
+        {loading ? (
+          <ActivityIndicator color={GREEN} style={{ marginVertical: 20 }} />
+        ) : (
+          <View style={styles.statsGrid}>
+            <View style={styles.statCard}>
+              <View style={[styles.statIconBox, { backgroundColor: '#E8F5E9' }]}>
+                <Text style={styles.statIcon}>📅</Text>
+              </View>
+              <Text style={styles.statNum}>{totalDays}</Text>
+              <Text style={styles.statLabel}>Total Days</Text>
             </View>
-            <Text style={styles.statNum}>{totalDays}</Text>
-            <Text style={styles.statLabel}>Total Days</Text>
-          </View>
-          <View style={styles.statCard}>
-            <View style={[styles.statIconBox, { backgroundColor: '#E8F5E9' }]}>
-              <Text style={styles.statIcon}>✅</Text>
+            <View style={styles.statCard}>
+              <View style={[styles.statIconBox, { backgroundColor: '#E8F5E9' }]}>
+                <Text style={styles.statIcon}>✅</Text>
+              </View>
+              <Text style={styles.statNum}>{presentDays}</Text>
+              <Text style={styles.statLabel}>Present</Text>
             </View>
-            <Text style={styles.statNum}>{presentDays}</Text>
-            <Text style={styles.statLabel}>Present</Text>
-          </View>
-          <View style={styles.statCard}>
-            <View style={[styles.statIconBox, { backgroundColor: '#FFF3E0' }]}>
-              <Text style={styles.statIcon}>🕐</Text>
+            <View style={styles.statCard}>
+              <View style={[styles.statIconBox, { backgroundColor: '#FFF3E0' }]}>
+                <Text style={styles.statIcon}>🕐</Text>
+              </View>
+              <Text style={styles.statNum}>{lateDays}</Text>
+              <Text style={styles.statLabel}>Late</Text>
             </View>
-            <Text style={styles.statNum}>{lateDays}</Text>
-            <Text style={styles.statLabel}>Late</Text>
-          </View>
-          <View style={styles.statCard}>
-            <View style={[styles.statIconBox, { backgroundColor: '#FFEBEE' }]}>
-              <Text style={styles.statIcon}>❌</Text>
+            <View style={styles.statCard}>
+              <View style={[styles.statIconBox, { backgroundColor: '#FFEBEE' }]}>
+                <Text style={styles.statIcon}>❌</Text>
+              </View>
+              <Text style={styles.statNum}>{absentDays}</Text>
+              <Text style={styles.statLabel}>Absent</Text>
             </View>
-            <Text style={styles.statNum}>{absentDays}</Text>
-            <Text style={styles.statLabel}>Absent</Text>
           </View>
-        </View>
+        )}
 
         {/* ── Search and Filter ── */}
         <View style={styles.card}>
@@ -165,9 +315,19 @@ export default function AttendanceScreen() {
                 ))}
               </View>
             </ScrollView>
-            <TouchableOpacity style={styles.exportBtn}>
-              <Text style={styles.exportIcon}>⬇</Text>
-              <Text style={styles.exportText}>Export</Text>
+            <TouchableOpacity
+              style={[styles.exportBtn, exporting && { opacity: 0.7 }]}
+              onPress={handleExport}
+              disabled={exporting}
+            >
+              {exporting ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <>
+                  <Text style={styles.exportIcon}>⬇</Text>
+                  <Text style={styles.exportText}>Export</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -175,31 +335,35 @@ export default function AttendanceScreen() {
         {/* ── Recent Entries ── */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>RECENT ENTRIES</Text>
-          <View style={styles.entriesList}>
-            {filtered.map((entry, idx) => (
-              <View key={entry.id} style={[styles.entryRow, idx === filtered.length - 1 && { borderBottomWidth: 0 }]}>
-                <View style={styles.entryLeft}>
-                  <Text style={styles.entryDate}>{entry.date}</Text>
-                  {entry.status !== 'Absent' ? (
-                    <Text style={styles.entryTime}>{entry.timeIn} – {entry.timeOut}</Text>
-                  ) : (
-                    <Text style={styles.entryTime}>-- : --</Text>
-                  )}
-                  <View style={styles.entryLocationRow}>
-                    <Text style={styles.locationPin}>📍</Text>
-                    <Text style={styles.entryLocation}>{entry.location}</Text>
+          {loading ? (
+            <ActivityIndicator color={GREEN} style={{ marginVertical: 16 }} />
+          ) : (
+            <View style={styles.entriesList}>
+              {filtered.map((entry, idx) => (
+                <View key={entry.id} style={[styles.entryRow, idx === filtered.length - 1 && { borderBottomWidth: 0 }]}>
+                  <View style={styles.entryLeft}>
+                    <Text style={styles.entryDate}>{entry.date}</Text>
+                    {entry.status !== 'Absent' ? (
+                      <Text style={styles.entryTime}>Checked in {entry.timeIn}</Text>
+                    ) : (
+                      <Text style={styles.entryTime}>-- : --</Text>
+                    )}
+                    <View style={styles.entryLocationRow}>
+                      <Text style={styles.locationPin}>📍</Text>
+                      <Text style={styles.entryLocation}>{entry.location}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.entryRight}>
+                    <StatusBadge status={entry.status} />
+                    <Text style={styles.entryHours}>{entry.hours}</Text>
                   </View>
                 </View>
-                <View style={styles.entryRight}>
-                  <StatusBadge status={entry.status} />
-                  <Text style={styles.entryHours}>{entry.hours}</Text>
-                </View>
-              </View>
-            ))}
-            {filtered.length === 0 && (
-              <Text style={styles.noResults}>No entries found</Text>
-            )}
-          </View>
+              ))}
+              {filtered.length === 0 && (
+                <Text style={styles.noResults}>No entries found</Text>
+              )}
+            </View>
+          )}
         </View>
 
         {/* ── Monthly Summary ── */}
@@ -216,7 +380,9 @@ export default function AttendanceScreen() {
           <View style={[styles.summaryRow, { borderBottomWidth: 0 }]}>
             <View>
               <Text style={styles.summaryLabel}>Late Arrivals</Text>
-              <Text style={styles.summarySub}>One delayed check-in this month</Text>
+              <Text style={styles.summarySub}>
+                {lateDays === 0 ? 'No delayed check-ins this month' : `${lateDays} delayed check-in${lateDays === 1 ? '' : 's'} this month`}
+              </Text>
             </View>
             <Text style={[styles.summaryNum, { color: '#F57C00' }]}>{lateDays}</Text>
           </View>
@@ -239,12 +405,6 @@ export default function AttendanceScreen() {
           <Text style={styles.tabIcon}>🕐</Text>
           <Text style={[styles.tabLabel, activeTab === 'Attendance' && styles.tabLabelActive]}>Attendance</Text>
           {activeTab === 'Attendance' && <View style={styles.tabIndicator} />}
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('History')}>
-          <Text style={styles.tabIcon}>🕒</Text>
-          <Text style={[styles.tabLabel, activeTab === 'History' && styles.tabLabelActive]}>History</Text>
-          {activeTab === 'History' && <View style={styles.tabIndicator} />}
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -320,7 +480,11 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: PURPLE },
   chipText: { fontSize: 12, color: '#888', fontWeight: '600' },
   chipTextActive: { color: '#FFFFFF' },
-  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: GREEN, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
+  exportBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: GREEN, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8,
+    minWidth: 90,
+  },
   exportIcon: { fontSize: 13, color: '#FFFFFF' },
   exportText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
 

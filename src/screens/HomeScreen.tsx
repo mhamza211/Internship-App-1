@@ -45,25 +45,47 @@ export default function HomeScreen() {
   const loadAttendanceData = async () => {
     setLoadingStatus(true);
     try {
+      const now = new Date();
+
+      // Fetch enough records to cover a full month (was 10, too small for stats)
       const [alreadyCheckedIn, recent] = await Promise.all([
         hasCheckedInToday(),
-        fetchMyAttendance(10),
+        fetchMyAttendance(40),
       ]);
       setCheckedInToday(alreadyCheckedIn);
       setRecentRecords(recent);
 
-      // Calculate this month's stats from real data
-      const now = new Date();
-      const thisMonth = recent.filter(r => {
+      // Records belonging to the current calendar month
+      const thisMonthRecords = recent.filter(r => {
         const d = new Date(r.check_in_time);
         return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
       });
-      const presentCount = thisMonth.filter(r => r.status === 'present').length;
-      const lateCount = thisMonth.filter(r => r.status === 'late').length;
+
+      const presentCount = thisMonthRecords.filter(r => r.status === 'present').length;
+      const lateCount = thisMonthRecords.filter(r => r.status === 'late').length;
+
+      // Dates (as plain "toDateString" keys) that already have a record this month
+      const recordedDates = new Set(
+        thisMonthRecords.map(r => new Date(r.check_in_time).toDateString())
+      );
+
+      // Walk every day from the 1st of the month up to YESTERDAY (today is excluded —
+      // the user may still check in later today, so it shouldn't count as absent yet).
+      // Assumes a Mon–Fri work week; change the isWorkday check below if Saturdays count too.
+      let absentCount = 0;
+      for (let day = 1; day < now.getDate(); day++) {
+        const d = new Date(now.getFullYear(), now.getMonth(), day);
+        const dow = d.getDay(); // 0 = Sun, 6 = Sat
+        const isWorkday = dow !== 0 && dow !== 6;
+        if (isWorkday && !recordedDates.has(d.toDateString())) {
+          absentCount++;
+        }
+      }
+
       setMonthStats({
         present: presentCount + lateCount,
-        absent: 0,
-        leave: 0,
+        absent: absentCount,
+        leave: 0, // no 'leave' status in current schema — wire this up once leave requests exist
       });
     } catch (e) {
       console.error('Failed to load attendance:', e);
@@ -246,12 +268,6 @@ export default function HomeScreen() {
           <Text style={styles.tabIcon}>🕐</Text>
           <Text style={[styles.tabLabel, activeTab === 'Attendance' && styles.tabLabelActive]}>Attendance</Text>
           {activeTab === 'Attendance' && <View style={styles.tabActiveIndicator} />}
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('History')}>
-          <Text style={styles.tabIcon}>🕒</Text>
-          <Text style={[styles.tabLabel, activeTab === 'History' && styles.tabLabelActive]}>History</Text>
-          {activeTab === 'History' && <View style={styles.tabActiveIndicator} />}
         </TouchableOpacity>
 
         <TouchableOpacity

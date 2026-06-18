@@ -182,7 +182,7 @@ export default function SettingsScreen() {
         <View style={{ height: 8 }} />
       </ScrollView>
 
-      {/* Bottom Tab Bar — 4 tabs */}
+      {/* Bottom Tab Bar — 3 tabs */}
       <View style={[styles.tabBar, { backgroundColor: cardBg, borderTopColor: borderColor }]}>
         <TouchableOpacity
           style={styles.tabItem}
@@ -200,15 +200,6 @@ export default function SettingsScreen() {
           <Text style={styles.tabIcon}>🕐</Text>
           <Text style={[styles.tabLabel, { color: subColor }, activeTab === 'Attendance' && styles.tabLabelActive]}>Attendance</Text>
           {activeTab === 'Attendance' && <View style={styles.tabActiveIndicator} />}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.tabItem}
-          onPress={() => setActiveTab('History')}
-        >
-          <Text style={styles.tabIcon}>🕒</Text>
-          <Text style={[styles.tabLabel, { color: subColor }, activeTab === 'History' && styles.tabLabelActive]}>History</Text>
-          {activeTab === 'History' && <View style={styles.tabActiveIndicator} />}
         </TouchableOpacity>
 
         <TouchableOpacity

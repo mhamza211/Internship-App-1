@@ -463,8 +463,8 @@ export default function CheckInScreen() {
         <View style={styles.previewRow}>
           <Text style={styles.previewIcon}>📍</Text>
           <View>
-            <Text style={styles.previewLabel}>Main Office, San Francisco</Text>
-            <Text style={styles.previewSub}>123 Market Street, CA 94102</Text>
+            <Text style={styles.previewLabel}>Main Office, Islamabad</Text>
+            <Text style={styles.previewSub}>123 Market Street</Text>
           </View>
         </View>
         {location && (
