@@ -174,6 +174,7 @@ export default function CheckInScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [checkInStatus, setCheckInStatus] = useState<'present' | 'late' | 'absent'>('present');
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => { fetchLocation(); }, []);
@@ -288,6 +289,7 @@ export default function CheckInScreen() {
     setSubmitting(false);
 
     if (result.success) {
+      if (result.status) setCheckInStatus(result.status);
       animateStep(5);
     } else {
       Alert.alert('Check-In Failed', result.error || 'Please try again.');
@@ -533,6 +535,15 @@ export default function CheckInScreen() {
         </View>
         <View style={styles.divider} />
         <View style={styles.confirmRow}>
+          <Text style={styles.confirmLabel}>Status</Text>
+          <Text style={[styles.confirmValue, {
+            color: (() => { const h = new Date().getHours(); return h >= 8 && h < 9 ? GREEN : h >= 9 && h < 10 ? '#F59E0B' : '#EF4444'; })(),
+          }]}>
+            {(() => { const h = new Date().getHours(); return h >= 8 && h < 9 ? 'Present' : h >= 9 && h < 10 ? 'Late' : 'Absent'; })()}
+          </Text>
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.confirmRow}>
           <Text style={styles.confirmLabel}>Date</Text>
           <Text style={styles.confirmValue}>
             {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
@@ -609,7 +620,17 @@ export default function CheckInScreen() {
         </View>
         <View style={styles.doneSummaryRow}>
           <Text style={styles.doneSummaryLabel}>Status</Text>
-          <Text style={[styles.doneSummaryValue, { color: GREEN }]}>Present ✓</Text>
+          <Text style={[styles.doneSummaryValue, {
+            color: checkInStatus === 'present' ? GREEN : checkInStatus === 'late' ? '#F59E0B' : '#EF4444',
+          }]}>
+            {checkInStatus === 'present' ? 'Present ✓' : checkInStatus === 'late' ? 'Late ⚠' : 'Absent ✗'}
+          </Text>
+        </View>
+        <View style={styles.doneSummaryRow}>
+          <Text style={styles.doneSummaryLabel}>Window</Text>
+          <Text style={styles.doneSummaryValue}>
+            {checkInStatus === 'present' ? '8:00 - 9:00 AM' : checkInStatus === 'late' ? '9:00 - 10:00 AM' : 'Outside hours'}
+          </Text>
         </View>
         <View style={styles.doneSummaryRow}>
           <Text style={styles.doneSummaryLabel}>Saved</Text>

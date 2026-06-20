@@ -44,7 +44,7 @@ export const uploadAttendancePhoto = async (photoUri: string, userId: string): P
 // ─────────────────────────────────────────
 // Save attendance check-in record
 // ─────────────────────────────────────────
-export const saveAttendance = async (checkInData: CheckInData): Promise<{ success: boolean; error?: string }> => {
+export const saveAttendance = async (checkInData: CheckInData): Promise<{ success: boolean; error?: string; status?: 'present' | 'late' | 'absent' }> => {
   try {
     // Get current logged in user
     const { data: { user } } = await supabase.auth.getUser();
@@ -56,10 +56,16 @@ export const saveAttendance = async (checkInData: CheckInData): Promise<{ succes
     // Upload photo first
     const photoUrl = await uploadAttendancePhoto(checkInData.photoUri, user.id);
 
-    // Determine status based on time (before 9AM = present, after = late)
     const now = new Date();
     const hour = now.getHours();
-    const status = hour < 9 ? 'present' : 'late';
+    let status: 'present' | 'late' | 'absent';
+    if (hour >= 8 && hour < 9) {
+      status = 'present';
+    } else if (hour >= 9 && hour < 10) {
+      status = 'late';
+    } else {
+      status = 'absent';
+    }
 
     // Insert attendance record into Supabase
     const { error } = await supabase.from('attendance').insert({
@@ -77,7 +83,7 @@ export const saveAttendance = async (checkInData: CheckInData): Promise<{ succes
       return { success: false, error: error.message };
     }
 
-    return { success: true };
+    return { success: true, status };
   } catch (error) {
     console.error('Attendance save failed:', error);
     return { success: false, error: 'Something went wrong' };
