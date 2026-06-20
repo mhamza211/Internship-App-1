@@ -17,7 +17,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { fetchMyAttendance } from '../lib/attendance';
 import { AttendanceRecord } from '../types/attendance';
-import RNFS from 'react-native-fs';
+import { Buffer } from 'buffer';
 import Share from 'react-native-share';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Attendance'>;
@@ -166,6 +166,9 @@ export default function AttendanceScreen() {
   const absentDays  = entries.filter(e => e.status === 'Absent').length;
 
   // ── Export full month history as CSV, then hand it to the native share sheet ──
+  // Uses a base64 data URL instead of writing to disk via RNFS — avoids the
+  // Android FileProvider conflict that breaks file:// sharing without extra
+  // manifest config.
   const handleExport = async () => {
     if (entries.length === 0) {
       Alert.alert('Nothing to Export', 'There are no attendance records for this month yet.');
@@ -195,14 +198,14 @@ export default function AttendanceScreen() {
       const csvContent = [...summaryLines, ...dataLines].join('\n');
 
       const fileName = `Attendance_${now.toLocaleDateString('en-US', { month: 'short' })}_${now.getFullYear()}.csv`;
-      // App-private storage — no Android permissions needed to write here
-      const filePath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
 
-      await RNFS.writeFile(filePath, csvContent, 'utf8');
+      // Encode CSV as base64 and hand it straight to the share sheet —
+      // no filesystem write, no FileProvider authority needed.
+      const base64Content = Buffer.from(csvContent, 'utf8').toString('base64');
 
       await Share.open({
         title: 'Export Attendance History',
-        url: Platform.OS === 'android' ? `file://${filePath}` : filePath,
+        url: `data:text/csv;base64,${base64Content}`,
         type: 'text/csv',
         filename: fileName,
         failOnCancel: false, // don't throw when the user just closes the share sheet
