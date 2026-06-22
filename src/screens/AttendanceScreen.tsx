@@ -227,7 +227,7 @@ export default function AttendanceScreen() {
         <View style={styles.monthStrip}>
           <Text style={styles.monthStripLabel}>This Month</Text>
           {loading ? (
-            <ActivityIndicator color="#fff" size="small" style={{ marginTop: 4, alignSelf: 'flex-start' }} />
+            <ActivityIndicator color="#fff" size="small" style={styles.monthStripLoader} />
           ) : (
             <Text style={styles.monthStripValue}>
               {presentDays} present  •  {lateDays} late  •  {absentDays} absent
@@ -239,32 +239,32 @@ export default function AttendanceScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
         {loading ? (
-          <ActivityIndicator color={GREEN} style={{ marginVertical: 20 }} />
+          <ActivityIndicator color={GREEN} style={styles.loadingIndicator} />
         ) : (
           <View style={styles.statsGrid}>
             <View style={[styles.statCard, { backgroundColor: cardBg }]}>
-              <View style={[styles.statIconBox, { backgroundColor: '#E8F5E9' }]}>
+              <View style={[styles.statIconBox, styles.statIconBoxGreen]}>
                 <Text style={styles.statIcon}>📅</Text>
               </View>
               <Text style={[styles.statNum, { color: textColor }]}>{totalDays}</Text>
               <Text style={[styles.statLabel, { color: subColor }]}>Total Days</Text>
             </View>
             <View style={[styles.statCard, { backgroundColor: cardBg }]}>
-              <View style={[styles.statIconBox, { backgroundColor: '#E8F5E9' }]}>
+              <View style={[styles.statIconBox, styles.statIconBoxGreen]}>
                 <Text style={styles.statIcon}>✅</Text>
               </View>
               <Text style={[styles.statNum, { color: textColor }]}>{presentDays}</Text>
               <Text style={[styles.statLabel, { color: subColor }]}>Present</Text>
             </View>
             <View style={[styles.statCard, { backgroundColor: cardBg }]}>
-              <View style={[styles.statIconBox, { backgroundColor: '#FFF3E0' }]}>
+              <View style={[styles.statIconBox, styles.statIconBoxOrange]}>
                 <Text style={styles.statIcon}>🕐</Text>
               </View>
               <Text style={[styles.statNum, { color: textColor }]}>{lateDays}</Text>
               <Text style={[styles.statLabel, { color: subColor }]}>Late</Text>
             </View>
             <View style={[styles.statCard, { backgroundColor: cardBg }]}>
-              <View style={[styles.statIconBox, { backgroundColor: '#FFEBEE' }]}>
+              <View style={[styles.statIconBox, styles.statIconBoxRed]}>
                 <Text style={styles.statIcon}>❌</Text>
               </View>
               <Text style={[styles.statNum, { color: textColor }]}>{absentDays}</Text>
@@ -299,7 +299,7 @@ export default function AttendanceScreen() {
               </View>
             </ScrollView>
             <TouchableOpacity
-              style={[styles.exportBtn, exporting && { opacity: 0.7 }]}
+              style={[styles.exportBtn, exporting && styles.exportBtnDisabled]}
               onPress={handleExport}
               disabled={exporting}
             >
@@ -318,11 +318,11 @@ export default function AttendanceScreen() {
         <View style={[styles.card, { backgroundColor: cardBg }]}>
           <Text style={[styles.sectionTitle, { color: subColor }]}>RECENT ENTRIES</Text>
           {loading ? (
-            <ActivityIndicator color={GREEN} style={{ marginVertical: 16 }} />
+            <ActivityIndicator color={GREEN} style={styles.entriesLoader} />
           ) : (
             <View style={styles.entriesList}>
               {filtered.map((entry, idx) => (
-                <View key={entry.id} style={[styles.entryRow, { borderBottomColor: borderColor }, idx === filtered.length - 1 && { borderBottomWidth: 0 }]}>
+                <View key={entry.id} style={[styles.entryRow, { borderBottomColor: borderColor }, idx === filtered.length - 1 && styles.noBorderBottom]}>
                   <View style={styles.entryLeft}>
                     <Text style={[styles.entryDate, { color: textColor }]}>{entry.date}</Text>
                     {entry.status !== 'Absent' ? (
@@ -358,14 +358,14 @@ export default function AttendanceScreen() {
             </View>
             <Text style={[styles.summaryNum, { color: GREEN }]}>{presentDays}</Text>
           </View>
-          <View style={[styles.summaryRow, { borderBottomWidth: 0 }]}>
+          <View style={[styles.summaryRow, styles.noBorderBottom]}>
             <View>
               <Text style={[styles.summaryLabel, { color: textColor }]}>Late Arrivals</Text>
               <Text style={[styles.summarySub, { color: subColor }]}>
                 {lateDays === 0 ? 'No delayed check-ins this month' : `${lateDays} delayed check-in${lateDays === 1 ? '' : 's'} this month`}
               </Text>
             </View>
-            <Text style={[styles.summaryNum, { color: '#F57C00' }]}>{lateDays}</Text>
+            <Text style={[styles.summaryNum, styles.summaryNumOrange]}>{lateDays}</Text>
           </View>
         </View>
 
@@ -424,6 +424,8 @@ const styles = StyleSheet.create({
   monthStrip: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },
   monthStripLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11, marginBottom: 4 },
   monthStripValue: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  monthStripLoader: { marginTop: 4, alignSelf: 'flex-start' },
+  loadingIndicator: { marginVertical: 20 },
 
   scroll: { flex: 1 },
   scrollContent: { padding: 16, gap: 14, paddingBottom: 32 },
@@ -435,6 +437,9 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 3,
   },
   statIconBox: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  statIconBoxGreen: { backgroundColor: '#E8F5E9' },
+  statIconBoxOrange: { backgroundColor: '#FFF3E0' },
+  statIconBoxRed: { backgroundColor: '#FFEBEE' },
   statIcon: { fontSize: 18 },
   statNum: { fontSize: 22, fontWeight: '800' },
   statLabel: { fontSize: 11, fontWeight: '500', textAlign: 'center' },
@@ -461,8 +466,11 @@ const styles = StyleSheet.create({
   },
   exportIcon: { fontSize: 13, color: '#FFFFFF' },
   exportText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  exportBtnDisabled: { opacity: 0.7 },
 
   sectionTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 12 },
+  entriesLoader: { marginVertical: 16 },
+  noBorderBottom: { borderBottomWidth: 0 },
   entriesList: { gap: 0 },
   entryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1 },
   entryLeft: { gap: 3 },
@@ -483,6 +491,7 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 14, fontWeight: '600', marginBottom: 3 },
   summarySub: { fontSize: 11 },
   summaryNum: { fontSize: 22, fontWeight: '800' },
+  summaryNumOrange: { color: '#F57C00' },
 
   tabBar: { flexDirection: 'row', borderTopWidth: 1, paddingBottom: 8, paddingTop: 10 },
   tabItem: { flex: 1, alignItems: 'center', gap: 3 },

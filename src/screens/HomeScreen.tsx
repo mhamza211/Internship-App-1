@@ -106,7 +106,7 @@ export default function HomeScreen() {
         key={item.id}
         style={[
           styles.attendanceRow,
-          isLast ? { borderBottomWidth: 0 } : { borderBottomWidth: 1, borderBottomColor: '#F0F0F5' },
+          isLast ? styles.noBorderBottom : styles.rowBorderBottom,
         ]}
       >
         <View style={styles.attendanceLeft}>
@@ -154,7 +154,7 @@ export default function HomeScreen() {
           <View>
             <Text style={styles.statusBoxLabel}>Today's Status</Text>
             {loadingStatus ? (
-              <ActivityIndicator color="#fff" size="small" style={{ marginTop: 4 }} />
+              <ActivityIndicator color="#fff" size="small" style={styles.statusLoader} />
             ) : (
               <Text style={styles.statusBoxValue}>
                 {checkedInToday ? '✅ Checked In' : '⚠️ Not Checked In'}
@@ -206,7 +206,7 @@ export default function HomeScreen() {
             <Text style={styles.cardTitle}>This Month</Text>
           </View>
           {loadingStatus ? (
-            <ActivityIndicator color={GREEN} style={{ marginVertical: 16 }} />
+            <ActivityIndicator color={GREEN} style={styles.statsLoader} />
           ) : (
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
@@ -235,7 +235,7 @@ export default function HomeScreen() {
         <View style={styles.card}>
           <View style={styles.cardTitleRow}>
             <Text style={styles.cardTitle}>Recent Attendance</Text>
-            {loadingStatus && <ActivityIndicator color={GREEN} size="small" style={{ marginLeft: 8 }} />}
+            {loadingStatus && <ActivityIndicator color={GREEN} size="small" style={styles.recentLoader} />}
           </View>
 
           {!loadingStatus && recentRecords.length === 0 ? (
@@ -250,7 +250,7 @@ export default function HomeScreen() {
           )}
         </View>
 
-        <View style={{ height: 16 }} />
+        <View style={styles.bottomSpacer} />
       </ScrollView>
 
       {/* ── FIXED BOTTOM TAB BAR ── */}
@@ -414,6 +414,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFEBEE', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20,
   },
   absentBadgeText: { color: '#E53935', fontSize: 12, fontWeight: '700' },
+  noBorderBottom: { borderBottomWidth: 0 },
+  rowBorderBottom: { borderBottomWidth: 1, borderBottomColor: '#F0F0F5' },
+  statusLoader: { marginTop: 4 },
+  statsLoader: { marginVertical: 16 },
+  recentLoader: { marginLeft: 8 },
+  bottomSpacer: { height: 16 },
 
   // Tab Bar
   tabBar: {

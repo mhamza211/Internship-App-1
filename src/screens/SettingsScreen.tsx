@@ -129,7 +129,7 @@ export default function SettingsScreen() {
             <Text style={styles.fieldLabel}>EMAIL</Text>
             <Text style={[styles.fieldValue, { color: textColor }]}>mhamza8732@gmail.com</Text>
           </View>
-          <View style={[styles.fieldBox, { backgroundColor: fieldBg, marginBottom: 0 }]}>
+          <View style={[styles.fieldBox, styles.noMarginBottom, { backgroundColor: fieldBg }]}>
             <Text style={styles.fieldLabel}>ROLE</Text>
             <Text style={[styles.fieldValue, { color: textColor }]}>Employee</Text>
           </View>
@@ -159,7 +159,7 @@ export default function SettingsScreen() {
           </View>
 
           {/* Notifications */}
-          <View style={[styles.settingRow, { backgroundColor: fieldBg, marginBottom: 0 }]}>
+          <View style={[styles.settingRow, styles.noMarginBottom, { backgroundColor: fieldBg }]}>
             <View style={styles.settingLeft}>
               <Text style={styles.settingRowIcon}>{notifications ? '🔔' : '🔕'}</Text>
               <View>
@@ -212,7 +212,7 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={{ height: 8 }} />
+        <View style={styles.bottomSpacer} />
       </ScrollView>
 
       {/* Bottom Tab Bar — 3 tabs */}
@@ -279,7 +279,7 @@ export default function SettingsScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.modalSaveBtn, updatingPassword && { opacity: 0.7 }]}
+                style={[styles.modalSaveBtn, updatingPassword && styles.modalSaveBtnDisabled]}
                 onPress={handleUpdatePassword}
                 disabled={updatingPassword}
               >
@@ -324,6 +324,8 @@ const styles = StyleSheet.create({
   fieldBox: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 10 },
   fieldLabel: { fontSize: 10, fontWeight: '700', color: '#AAA', letterSpacing: 1, marginBottom: 4 },
   fieldValue: { fontSize: 14, fontWeight: '600' },
+  noMarginBottom: { marginBottom: 0 },
+  bottomSpacer: { height: 8 },
   settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 10 },
   settingLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   settingRowIcon: { fontSize: 16 },
@@ -350,5 +352,6 @@ const styles = StyleSheet.create({
   modalCancelBtn: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   modalCancelText: { fontSize: 14, fontWeight: '600' },
   modalSaveBtn: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center', backgroundColor: GREEN },
+  modalSaveBtnDisabled: { opacity: 0.7 },
   modalSaveText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
 });

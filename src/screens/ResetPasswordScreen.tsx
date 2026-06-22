@@ -100,7 +100,7 @@ export default function ResetPasswordScreen() {
                   autoCapitalize="none"
                 />
                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                  <Text style={{ fontSize: 16 }}>{showPassword ? '🙈' : '👁'}</Text>
+                  <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁'}</Text>
                 </TouchableOpacity>
               </View>
 
@@ -180,6 +180,7 @@ const styles = StyleSheet.create({
   inputBox: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 14 : 4, marginBottom: 20, gap: 10 },
   inputIcon: { fontSize: 16 },
   input: { flex: 1, fontSize: 14 },
+  eyeIcon: { fontSize: 16 },
   resetBtn: { backgroundColor: GREEN, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 16, shadowColor: GREEN, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 6 },
   resetBtnDisabled: { backgroundColor: '#3A7A50', shadowOpacity: 0 },
   resetBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },

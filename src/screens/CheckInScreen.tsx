@@ -177,7 +177,8 @@ export default function CheckInScreen() {
   const [checkInStatus, setCheckInStatus] = useState<'present' | 'late' | 'absent'>('present');
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  useEffect(() => { fetchLocation(); }, []);
+  useEffect(() => { fetchLocation(); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const animateStep = (next: Step) => {
     Animated.sequence([
@@ -597,7 +598,7 @@ export default function CheckInScreen() {
       >
         {submitting
           ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={styles.submittingRow}>
               <ActivityIndicator color="#FFF" />
               <Text style={styles.continueBtnText}>Saving to database...</Text>
             </View>
@@ -899,4 +900,5 @@ const styles = StyleSheet.create({
     shadowColor: PURPLE, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 8,
   },
   doneHomeBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  submittingRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
 });

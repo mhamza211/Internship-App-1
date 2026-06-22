@@ -112,7 +112,7 @@ export default function LoginScreen() {
 
           <View style={styles.rememberRow}>
             <TouchableOpacity style={styles.rememberLeft} onPress={() => setRememberMe(!rememberMe)} activeOpacity={0.7}>
-              <View style={[styles.checkbox, { borderColor: GREEN, backgroundColor: rememberMe ? GREEN : 'transparent' }]}>
+              <View style={[styles.checkbox, { borderColor: GREEN }, rememberMe ? styles.checkboxChecked : styles.checkboxUnchecked]}>
                 {rememberMe && <Text style={styles.checkmark}>✓</Text>}
               </View>
               <Text style={[styles.rememberText, { color: theme.text }]}>Remember me</Text>
@@ -177,6 +177,8 @@ const styles = StyleSheet.create({
   rememberRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   rememberLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   checkbox: { width: 18, height: 18, borderRadius: 4, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  checkboxChecked: { backgroundColor: GREEN },
+  checkboxUnchecked: { backgroundColor: 'transparent' },
   checkmark: { color: '#FFF', fontSize: 11, fontWeight: '800' },
   rememberText: { fontSize: 13 },
   forgotText: { color: GREEN, fontSize: 13, fontWeight: '600' },
