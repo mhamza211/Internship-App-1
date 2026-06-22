@@ -1,5 +1,4 @@
 // src/lib/attendance.ts
-// Place this file in: src/lib/attendance.ts
 
 import { supabase } from './supabase';
 import { AttendanceRecord, CheckInData } from '../types/attendance';
