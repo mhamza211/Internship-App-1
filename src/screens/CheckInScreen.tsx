@@ -277,10 +277,23 @@ export default function CheckInScreen() {
 
     setSubmitting(true);
 
+    let address: string | undefined;
+    try {
+      const geoRes = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${location.latitude}&lon=${location.longitude}&format=json`,
+        { headers: { 'User-Agent': 'GeoLockApp/1.0' } }
+      );
+      const geoData = await geoRes.json();
+      if (geoData.display_name) {
+        address = geoData.display_name;
+      }
+    } catch {}
+
     const checkInData: CheckInData = {
       latitude: location.latitude,
       longitude: location.longitude,
       photoUri,
+      address,
     };
 
     // Save to Supabase

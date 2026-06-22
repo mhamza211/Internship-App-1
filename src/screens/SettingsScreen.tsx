@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, StatusBar, SafeAreaView, Platform, Alert, Switch,
+  Modal, TextInput, ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -18,6 +19,10 @@ export default function SettingsScreen() {
   const [lightMode, setLightMode] = useState(true);
   const [notifications, setNotifications] = useState(true);
   const [activeTab, setActiveTab] = useState<'Home' | 'Attendance' | 'History' | 'Settings'>('Settings');
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [updatingPassword, setUpdatingPassword] = useState(false);
 
   const bg        = lightMode ? '#F0F2F8' : '#1A1A2E';
   const cardBg    = lightMode ? '#FFFFFF'  : '#252840';
@@ -54,6 +59,34 @@ export default function SettingsScreen() {
         },
       },
     ]);
+  };
+
+  const handleUpdatePassword = async () => {
+    if (!newPassword || !confirmPassword) {
+      Alert.alert('Error', 'Please fill in both fields.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match.');
+      return;
+    }
+
+    setUpdatingPassword(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setUpdatingPassword(false);
+
+    if (error) {
+      Alert.alert('Failed', error.message);
+    } else {
+      Alert.alert('Success', 'Your password has been updated.');
+      setShowPasswordModal(false);
+      setNewPassword('');
+      setConfirmPassword('');
+    }
   };
 
   return (
@@ -153,7 +186,7 @@ export default function SettingsScreen() {
           </View>
           <TouchableOpacity
             style={[styles.actionBtn, { backgroundColor: fieldBg }]}
-            onPress={() => Alert.alert('Update Password', 'This feature will be available soon.')}
+            onPress={() => setShowPasswordModal(true)}
             activeOpacity={0.7}
           >
             <Text style={[styles.actionBtnText, { color: textColor }]}>Update password</Text>
@@ -211,6 +244,56 @@ export default function SettingsScreen() {
           {activeTab === 'Settings' && <View style={styles.tabActiveIndicator} />}
         </TouchableOpacity>
       </View>
+      <Modal visible={showPasswordModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalBox, { backgroundColor: cardBg }]}>
+            <Text style={[styles.modalTitle, { color: textColor }]}>Update Password</Text>
+
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: fieldBg, color: textColor }]}
+              placeholder="New password"
+              placeholderTextColor="#AAA"
+              secureTextEntry
+              value={newPassword}
+              onChangeText={setNewPassword}
+            />
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: fieldBg, color: textColor }]}
+              placeholder="Confirm new password"
+              placeholderTextColor="#AAA"
+              secureTextEntry
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+            />
+
+            <View style={styles.modalBtns}>
+              <TouchableOpacity
+                style={[styles.modalCancelBtn, { backgroundColor: fieldBg }]}
+                onPress={() => {
+                  setShowPasswordModal(false);
+                  setNewPassword('');
+                  setConfirmPassword('');
+                }}
+              >
+                <Text style={[styles.modalCancelText, { color: textColor }]}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalSaveBtn, updatingPassword && { opacity: 0.7 }]}
+                onPress={handleUpdatePassword}
+                disabled={updatingPassword}
+              >
+                {updatingPassword ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <Text style={styles.modalSaveText}>Update</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -258,4 +341,14 @@ const styles = StyleSheet.create({
   tabLabel: { fontSize: 11 },
   tabLabelActive: { color: PURPLE, fontWeight: '700' },
   tabActiveIndicator: { position: 'absolute', bottom: -10, width: 20, height: 3, backgroundColor: PURPLE, borderRadius: 2 },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalBox: { width: '100%', borderRadius: 16, padding: 20 },
+  modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 16 },
+  modalInput: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, marginBottom: 12 },
+  modalBtns: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  modalCancelBtn: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  modalCancelText: { fontSize: 14, fontWeight: '600' },
+  modalSaveBtn: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center', backgroundColor: GREEN },
+  modalSaveText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
 });
