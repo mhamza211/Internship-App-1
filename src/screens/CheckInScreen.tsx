@@ -18,8 +18,14 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import Geolocation from '@react-native-community/geolocation';
 import { launchCamera } from 'react-native-image-picker';
-import { saveAttendance } from '../lib/attendance';   // ← SUPABASE
-import { CheckInData } from '../types/attendance';    // ← SUPABASE
+import { saveAttendance } from '../lib/attendance';
+import { CheckInData } from '../types/attendance';
+import { supabase } from '../lib/supabase';
+import {
+  MapPinIcon, CameraIcon, GlobeIcon, SignalIcon, SmartphoneIcon,
+  LightbulbIcon, EyeIcon, NoEntryIcon, SatelliteIcon, ClockIcon,
+  UserIcon, NavigationIcon, CheckIcon, ArrowLeftIcon, WarningIcon, CrossIcon,
+} from '../components/Icons';
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -41,7 +47,6 @@ const PURPLE = '#3D2C8D';
 const GREEN = '#5DBB7A';
 const DARK_BG = '#1A1A2E';
 
-// ─── Radar pulse animation ───────────────────────────────────────────────────
 function RadarPulse() {
   const ring1 = useRef(new Animated.Value(0)).current;
   const ring2 = useRef(new Animated.Value(0)).current;
@@ -78,7 +83,7 @@ function RadarPulse() {
       <Animated.View style={ringStyle(ring2, 160)} />
       <Animated.View style={ringStyle(ring3, 100)} />
       <View style={radarStyles.centerDot}>
-        <Text style={radarStyles.pinEmoji}>📍</Text>
+        <MapPinIcon size={22} color="#FFFFFF" />
       </View>
     </View>
   );
@@ -91,10 +96,8 @@ const radarStyles = StyleSheet.create({
     backgroundColor: GREEN, alignItems: 'center', justifyContent: 'center',
     shadowColor: GREEN, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 12, elevation: 8,
   },
-  pinEmoji: { fontSize: 22 },
 });
 
-// ─── Step indicator ──────────────────────────────────────────────────────────
 function StepBar({ current }: { current: Step }) {
   return (
     <View style={stepStyles.row}>
@@ -109,9 +112,10 @@ function StepBar({ current }: { current: Step }) {
                 done && stepStyles.circleDone,
                 active && stepStyles.circleActive,
               ]}>
-                <Text style={[stepStyles.circleText, (done || active) && stepStyles.circleTextActive]}>
-                  {done ? '✓' : step.id}
-                </Text>
+                {done
+                  ? <CheckIcon size={11} color={PURPLE} />
+                  : <Text style={[stepStyles.circleText, (done || active) && stepStyles.circleTextActive]}>{step.id}</Text>
+                }
               </View>
               <Text style={[stepStyles.label, active && stepStyles.labelActive]}>{step.label}</Text>
             </View>
@@ -143,11 +147,10 @@ const stepStyles = StyleSheet.create({
   lineDone: { backgroundColor: GREEN },
 });
 
-// ─── Verification row ─────────────────────────────────────────────────────
-function VerifyRow({ icon, text }: { icon: string; text: string }) {
+function VerifyRow({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
     <View style={verifyStyles.row}>
-      <Text style={verifyStyles.icon}>{icon}</Text>
+      {icon}
       <Text style={verifyStyles.text}>{text}</Text>
     </View>
   );
@@ -158,13 +161,9 @@ const verifyStyles = StyleSheet.create({
     backgroundColor: 'rgba(93,187,122,0.12)', borderRadius: 10,
     paddingHorizontal: 14, paddingVertical: 10,
   },
-  icon: { fontSize: 16 },
   text: { fontSize: 13, color: '#D0F0DC', fontWeight: '500' },
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-//  Main Screen
-// ════════════════════════════════════════════════════════════════════════════
 export default function CheckInScreen() {
   const navigation = useNavigation();
   const [step, setStep] = useState<Step>(1);
@@ -175,9 +174,18 @@ export default function CheckInScreen() {
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [checkInStatus, setCheckInStatus] = useState<'present' | 'late' | 'absent'>('present');
+  const [userName, setUserName] = useState('');
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  useEffect(() => { fetchLocation(); // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    fetchLocation();
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserName(user.user_metadata?.full_name || user.email || '');
+      }
+    };
+    fetchUser();
   }, []);
 
   const animateStep = (next: Step) => {
@@ -269,7 +277,6 @@ export default function CheckInScreen() {
     );
   };
 
-  // ── UPDATED: now saves to Supabase ──────────────────────────────────────
   const handleConfirm = async () => {
     if (!location || !photoUri) {
       Alert.alert('Error', 'Missing GPS or photo data. Please start again.');
@@ -297,7 +304,6 @@ export default function CheckInScreen() {
       address,
     };
 
-    // Save to Supabase
     const result = await saveAttendance(checkInData);
 
     setSubmitting(false);
@@ -315,18 +321,17 @@ export default function CheckInScreen() {
     return `${deg}° ${val >= 0 ? posLabel : negLabel}`;
   };
 
-  // ── Header ─────────────────────────────────────────────────────────────────
   const renderHeader = () => (
     <View style={styles.header}>
       <TouchableOpacity style={styles.backBtn} onPress={() => {
         if (step === 1) navigation.goBack();
         else animateStep((step - 1) as Step);
       }}>
-        <Text style={styles.backArrow}>←</Text>
+        <ArrowLeftIcon size={22} color="#FFFFFF" />
       </TouchableOpacity>
       <View style={styles.headerCenter}>
         <View style={styles.geoLockLabel}>
-          <Text style={styles.geoLockPin}>📍</Text>
+          <MapPinIcon size={11} color="rgba(255,255,255,0.7)" />
           <Text style={styles.geoLockText}>GEOLOCK</Text>
         </View>
         <Text style={styles.headerTitle}>{STEP_TITLES[step]}</Text>
@@ -335,7 +340,6 @@ export default function CheckInScreen() {
     </View>
   );
 
-  // ── Step 1: GPS ─────────────────────────────────────────────────────────────
   const renderGPS = () => (
     <ScrollView style={styles.darkScroll} contentContainerStyle={styles.darkScrollContent} showsVerticalScrollIndicator={false}>
       <View style={styles.mapBox}>
@@ -361,7 +365,7 @@ export default function CheckInScreen() {
         <View style={styles.verifyCardTop}>
           <View style={styles.verifyCardLeft}>
             <View style={styles.navIconBox}>
-              <Text style={styles.navIcon}>➤</Text>
+              <NavigationIcon size={16} color={GREEN} />
             </View>
             <View>
               <Text style={styles.verifyCardTitle}>GPS Verification</Text>
@@ -372,7 +376,10 @@ export default function CheckInScreen() {
           </View>
           {!locationLoading && !locationError && (
             <View style={styles.verifiedBadge}>
-              <Text style={styles.verifiedText}>Verified ✓</Text>
+              <View style={styles.verifiedContent}>
+                <Text style={styles.verifiedText}>Verified </Text>
+                <CheckIcon size={10} color={GREEN} />
+              </View>
             </View>
           )}
         </View>
@@ -405,14 +412,14 @@ export default function CheckInScreen() {
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>{locationError}</Text>
           <TouchableOpacity onPress={fetchLocation} style={styles.retryBtn}>
-            <Text style={styles.retryText}>↻ Retry</Text>
+            <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <View style={styles.checkRows}>
-          <VerifyRow icon="🌐" text="Within approved geofence radius (150m)" />
-          <VerifyRow icon="📶" text="Corporate network detected" />
-          <VerifyRow icon="📱" text="Device identity verified" />
+          <VerifyRow icon={<GlobeIcon size={16} color="#D0F0DC" />} text="Within approved geofence radius (150m)" />
+          <VerifyRow icon={<SignalIcon size={16} color="#D0F0DC" />} text="Corporate network detected" />
+          <VerifyRow icon={<SmartphoneIcon size={16} color="#D0F0DC" />} text="Device identity verified" />
         </View>
       )}
 
@@ -422,12 +429,11 @@ export default function CheckInScreen() {
         onPress={() => animateStep(2)}
         activeOpacity={0.85}
       >
-        <Text style={styles.continueBtnText}>Continue to Camera →</Text>
+        <Text style={styles.continueBtnText}>Continue to Camera</Text>
       </TouchableOpacity>
     </ScrollView>
   );
 
-  // ── Step 2: Camera ──────────────────────────────────────────────────────────
   const renderCamera = () => (
     <View style={styles.cameraStep}>
       <View style={styles.cameraBox}>
@@ -435,20 +441,20 @@ export default function CheckInScreen() {
         <View style={styles.cameraCornerTR} />
         <View style={styles.cameraCornerBL} />
         <View style={styles.cameraCornerBR} />
-        <Text style={styles.cameraEmoji}>📷</Text>
+        <CameraIcon size={64} color="#8B8FA8" />
         <Text style={styles.cameraHint}>Position your face inside the frame</Text>
       </View>
       <View style={styles.cameraInfoRow}>
         <View style={styles.cameraInfoItem}>
-          <Text style={styles.cameraInfoIcon}>💡</Text>
+          <LightbulbIcon size={20} color="#FFC107" />
           <Text style={styles.cameraInfoText}>Good lighting</Text>
         </View>
         <View style={styles.cameraInfoItem}>
-          <Text style={styles.cameraInfoIcon}>👁</Text>
+          <EyeIcon size={20} color="#8B8FA8" />
           <Text style={styles.cameraInfoText}>Face visible</Text>
         </View>
         <View style={styles.cameraInfoItem}>
-          <Text style={styles.cameraInfoIcon}>🚫</Text>
+          <NoEntryIcon size={20} color="#E53935" />
           <Text style={styles.cameraInfoText}>No filters</Text>
         </View>
       </View>
@@ -459,7 +465,6 @@ export default function CheckInScreen() {
     </View>
   );
 
-  // ── Step 3: Preview ─────────────────────────────────────────────────────────
   const renderPreview = () => (
     <ScrollView style={styles.lightScroll} contentContainerStyle={styles.lightScrollContent} showsVerticalScrollIndicator={false}>
       <Text style={styles.sectionHeading}>Photo Preview</Text>
@@ -467,17 +472,20 @@ export default function CheckInScreen() {
         {photoUri ? (
           <Image source={{ uri: photoUri }} style={styles.photoImage} resizeMode="cover" />
         ) : (
-          <Text style={styles.photoPlaceholder}>🧑</Text>
+          <UserIcon size={80} color="#8B8FA8" />
         )}
         <View style={styles.photoOverlay}>
-          <Text style={styles.photoOverlayText}>✓  Photo captured</Text>
+          <View style={styles.photoOverlayContent}>
+            <CheckIcon size={13} color="#FFF" />
+            <Text style={styles.photoOverlayText}>  Photo captured</Text>
+          </View>
         </View>
       </View>
 
       <Text style={styles.sectionHeading}>Location Preview</Text>
       <View style={styles.previewCard}>
         <View style={styles.previewRow}>
-          <Text style={styles.previewIcon}>📍</Text>
+          <MapPinIcon size={18} color="#E53935" />
           <View>
             <Text style={styles.previewLabel}>Main Office, Islamabad</Text>
             <Text style={styles.previewSub}>123 Market Street</Text>
@@ -485,14 +493,14 @@ export default function CheckInScreen() {
         </View>
         {location && (
           <View style={styles.previewRow}>
-            <Text style={styles.previewIcon}>🛰</Text>
+            <SatelliteIcon size={18} color="#6C63FF" />
             <Text style={styles.previewLabel}>
               {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
             </Text>
           </View>
         )}
         <View style={styles.previewRow}>
-          <Text style={styles.previewIcon}>🕐</Text>
+          <ClockIcon size={18} color="#888" />
           <Text style={styles.previewLabel}>
             {new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </Text>
@@ -501,16 +509,15 @@ export default function CheckInScreen() {
 
       <View style={styles.btnRow}>
         <TouchableOpacity style={styles.retakeBtn} onPress={() => animateStep(2)}>
-          <Text style={styles.retakeBtnText}>↩ Retake</Text>
+          <Text style={styles.retakeBtnText}>Retake</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.continueBtn2} onPress={() => animateStep(4)} activeOpacity={0.85}>
-          <Text style={styles.continueBtnText}>Continue →</Text>
+          <Text style={styles.continueBtnText}>Continue</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
   );
 
-  // ── Step 4: Confirm ─────────────────────────────────────────────────────────
   const renderConfirm = () => (
     <ScrollView style={styles.lightScroll} contentContainerStyle={styles.lightScrollContent} showsVerticalScrollIndicator={false}>
       <Text style={styles.sectionHeading}>Confirm Check-In</Text>
@@ -519,8 +526,11 @@ export default function CheckInScreen() {
         <View style={styles.confirmPhotoRow}>
           <Image source={{ uri: photoUri }} style={styles.confirmThumb} />
           <View>
-            <Text style={styles.confirmPhotoName}>Muhammad Hamza</Text>
-            <Text style={styles.confirmPhotoSub}>Photo verified ✓</Text>
+            <Text style={styles.confirmPhotoName}>{userName}</Text>
+            <View style={styles.confirmPhotoVerified}>
+              <Text style={styles.confirmPhotoSub}>Photo verified </Text>
+              <CheckIcon size={10} color={GREEN} />
+            </View>
           </View>
         </View>
       )}
@@ -528,7 +538,7 @@ export default function CheckInScreen() {
       <View style={styles.confirmCard}>
         <View style={styles.confirmRow}>
           <Text style={styles.confirmLabel}>Employee</Text>
-          <Text style={styles.confirmValue}>Muhammad Hamza</Text>
+          <Text style={styles.confirmValue}>{userName}</Text>
         </View>
         <View style={styles.divider} />
         <View style={styles.confirmRow}>
@@ -538,7 +548,10 @@ export default function CheckInScreen() {
         <View style={styles.divider} />
         <View style={styles.confirmRow}>
           <Text style={styles.confirmLabel}>Geofence</Text>
-          <Text style={[styles.confirmValue, { color: GREEN }]}>Inside Zone ✓</Text>
+          <View style={styles.confirmValueRow}>
+            <Text style={[styles.confirmValue, { color: GREEN }]}>Inside Zone </Text>
+            <CheckIcon size={10} color={GREEN} />
+          </View>
         </View>
         <View style={styles.divider} />
         <View style={styles.confirmRow}>
@@ -568,7 +581,7 @@ export default function CheckInScreen() {
             <View style={styles.divider} />
             <View style={styles.confirmRow}>
               <Text style={styles.confirmLabel}>GPS Accuracy</Text>
-              <Text style={styles.confirmValue}>±{location.accuracy}m</Text>
+              <Text style={styles.confirmValue}>{'±'}{location.accuracy}m</Text>
             </View>
           </>
         )}
@@ -589,7 +602,6 @@ export default function CheckInScreen() {
         <Text style={styles.charCount}>{notes.length}/200</Text>
       </View>
 
-      {/* ── Confirm button now saves to Supabase ── */}
       <TouchableOpacity
         style={[styles.continueBtn, submitting && styles.continueBtnDisabled]}
         onPress={handleConfirm}
@@ -603,12 +615,16 @@ export default function CheckInScreen() {
               <Text style={styles.continueBtnText}>Saving to database...</Text>
             </View>
           )
-          : <Text style={styles.continueBtnText}>Confirm Check-In ✓</Text>}
+          : (
+            <View style={styles.submittingRow}>
+              <Text style={styles.continueBtnText}>Confirm Check-In </Text>
+              <CheckIcon size={14} color="#FFF" />
+            </View>
+          )}
       </TouchableOpacity>
     </ScrollView>
   );
 
-  // ── Step 5: Done ─────────────────────────────────────────────────────────────
   const renderDone = () => (
     <View style={styles.doneContainer}>
       {photoUri && (
@@ -616,7 +632,7 @@ export default function CheckInScreen() {
       )}
       <View style={styles.doneIconRing}>
         <View style={styles.doneIconInner}>
-          <Text style={styles.doneCheckmark}>✓</Text>
+          <CheckIcon size={32} color="#FFF" />
         </View>
       </View>
       <Text style={styles.doneTitle}>Check-In Complete!</Text>
@@ -634,11 +650,19 @@ export default function CheckInScreen() {
         </View>
         <View style={styles.doneSummaryRow}>
           <Text style={styles.doneSummaryLabel}>Status</Text>
-          <Text style={[styles.doneSummaryValue, {
-            color: checkInStatus === 'present' ? GREEN : checkInStatus === 'late' ? '#F59E0B' : '#EF4444',
-          }]}>
-            {checkInStatus === 'present' ? 'Present ✓' : checkInStatus === 'late' ? 'Late ⚠' : 'Absent ✗'}
-          </Text>
+          <View style={styles.doneSummaryValueRow}>
+            <Text style={[styles.doneSummaryValue, {
+              color: checkInStatus === 'present' ? GREEN : checkInStatus === 'late' ? '#F59E0B' : '#EF4444',
+            }]}>
+              {checkInStatus === 'present' ? 'Present ' : checkInStatus === 'late' ? 'Late ' : 'Absent '}
+            </Text>
+            {checkInStatus === 'present'
+              ? <CheckIcon size={12} color={GREEN} />
+              : checkInStatus === 'late'
+                ? <WarningIcon size={12} color="#F59E0B" />
+                : <CrossIcon size={12} color="#EF4444" />
+            }
+          </View>
         </View>
         <View style={styles.doneSummaryRow}>
           <Text style={styles.doneSummaryLabel}>Window</Text>
@@ -648,7 +672,10 @@ export default function CheckInScreen() {
         </View>
         <View style={styles.doneSummaryRow}>
           <Text style={styles.doneSummaryLabel}>Saved</Text>
-          <Text style={[styles.doneSummaryValue, { color: GREEN }]}>Supabase ✓</Text>
+          <View style={styles.doneSummaryValueRow}>
+            <Text style={[styles.doneSummaryValue, { color: GREEN }]}>Supabase </Text>
+            <CheckIcon size={12} color={GREEN} />
+          </View>
         </View>
       </View>
       <TouchableOpacity style={styles.doneHomeBtn} onPress={() => navigation.goBack()} activeOpacity={0.85}>
@@ -698,10 +725,8 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) + 4 : 12,
   },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  backArrow: { color: '#FFF', fontSize: 22 },
   headerCenter: { alignItems: 'center' },
   geoLockLabel: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 },
-  geoLockPin: { fontSize: 11 },
   geoLockText: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 },
   headerTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
 
@@ -742,13 +767,13 @@ const styles = StyleSheet.create({
     width: 38, height: 38, borderRadius: 10,
     backgroundColor: 'rgba(93,187,122,0.15)', alignItems: 'center', justifyContent: 'center',
   },
-  navIcon: { fontSize: 16, color: GREEN },
   verifyCardTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
   verifyCardSub: { color: '#8B8FA8', fontSize: 12, marginTop: 2 },
   verifiedBadge: {
     backgroundColor: 'rgba(93,187,122,0.15)', borderRadius: 20,
     paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: GREEN,
   },
+  verifiedContent: { flexDirection: 'row', alignItems: 'center' },
   verifiedText: { color: GREEN, fontSize: 12, fontWeight: '700' },
 
   infoBoxRow: { flexDirection: 'row', gap: 8 },
@@ -788,11 +813,9 @@ const styles = StyleSheet.create({
   cameraCornerTR: { position: 'absolute', top: 12, right: 12, width: 24, height: 24, borderTopWidth: 3, borderRightWidth: 3, borderColor: GREEN, borderTopRightRadius: 4 },
   cameraCornerBL: { position: 'absolute', bottom: 12, left: 12, width: 24, height: 24, borderBottomWidth: 3, borderLeftWidth: 3, borderColor: GREEN, borderBottomLeftRadius: 4 },
   cameraCornerBR: { position: 'absolute', bottom: 12, right: 12, width: 24, height: 24, borderBottomWidth: 3, borderRightWidth: 3, borderColor: GREEN, borderBottomRightRadius: 4 },
-  cameraEmoji: { fontSize: 64 },
   cameraHint: { color: '#8B8FA8', fontSize: 13, marginTop: 12, textAlign: 'center' },
   cameraInfoRow: { flexDirection: 'row', gap: 20 },
   cameraInfoItem: { alignItems: 'center', gap: 4 },
-  cameraInfoIcon: { fontSize: 20 },
   cameraInfoText: { color: '#8B8FA8', fontSize: 11 },
   captureBtn: {
     width: 72, height: 72, borderRadius: 36,
@@ -811,11 +834,11 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
   photoImage: { width: '100%', height: '100%', borderRadius: 16 },
-  photoPlaceholder: { fontSize: 80 },
   photoOverlay: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: 'rgba(93,187,122,0.85)', paddingVertical: 8, alignItems: 'center',
   },
+  photoOverlayContent: { flexDirection: 'row', alignItems: 'center' },
   photoOverlayText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
 
   previewCard: {
@@ -823,7 +846,6 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 3,
   },
   previewRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  previewIcon: { fontSize: 18, width: 24 },
   previewLabel: { fontSize: 14, fontWeight: '600', color: '#1A1A2E' },
   previewSub: { fontSize: 12, color: '#888', marginTop: 2 },
 
@@ -847,6 +869,7 @@ const styles = StyleSheet.create({
   confirmThumb: { width: 56, height: 56, borderRadius: 28, borderWidth: 2, borderColor: GREEN },
   confirmPhotoName: { fontSize: 15, fontWeight: '700', color: '#1A1A2E' },
   confirmPhotoSub: { fontSize: 12, color: GREEN, marginTop: 2 },
+  confirmPhotoVerified: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
 
   confirmCard: {
     backgroundColor: '#FFF', borderRadius: 16, padding: 16,
@@ -855,6 +878,7 @@ const styles = StyleSheet.create({
   confirmRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10 },
   confirmLabel: { fontSize: 14, color: '#888' },
   confirmValue: { fontSize: 14, fontWeight: '700', color: '#1A1A2E' },
+  confirmValueRow: { flexDirection: 'row', alignItems: 'center' },
   divider: { height: 1, backgroundColor: '#F0F0F5' },
 
   notesCard: {
@@ -885,16 +909,16 @@ const styles = StyleSheet.create({
     width: 66, height: 66, borderRadius: 33,
     backgroundColor: GREEN, alignItems: 'center', justifyContent: 'center',
   },
-  doneCheckmark: { color: '#FFF', fontSize: 32, fontWeight: '800' },
   doneTitle: { fontSize: 26, fontWeight: '800', color: '#1A1A2E' },
   doneSub: { fontSize: 14, color: '#666', textAlign: 'center', lineHeight: 22 },
   doneSummary: {
     backgroundColor: '#FFF', borderRadius: 16, padding: 16, width: '100%', gap: 4,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 3,
   },
-  doneSummaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F0F0F5' },
+  doneSummaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F0F0F5' },
   doneSummaryLabel: { color: '#888', fontSize: 14 },
   doneSummaryValue: { color: '#1A1A2E', fontSize: 14, fontWeight: '700' },
+  doneSummaryValueRow: { flexDirection: 'row', alignItems: 'center' },
   doneHomeBtn: {
     backgroundColor: PURPLE, borderRadius: 14, paddingVertical: 15, paddingHorizontal: 48,
     shadowColor: PURPLE, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 8,

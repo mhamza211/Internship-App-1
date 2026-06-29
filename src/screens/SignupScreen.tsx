@@ -11,11 +11,15 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  DimensionValue,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { supabase } from '../lib/supabase';
+import {
+  LockIcon, SunIcon, MoonIcon, UserIcon, MailIcon, EyeIcon, EyeOffIcon,
+} from '../components/Icons';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Signup'>;
 
@@ -33,6 +37,22 @@ export default function SignupScreen() {
   const [loading, setLoading] = useState(false);
 
   const theme = darkMode ? dark : light;
+
+  const getPasswordStrength = (pass: string): { label: string; color: string; width: DimensionValue } => {
+    if (!pass) return { label: '', color: 'transparent', width: '0%' };
+    let score = 0;
+    if (pass.length >= 6) score++;
+    if (pass.length >= 10) score++;
+    if (/[A-Z]/.test(pass)) score++;
+    if (/[0-9]/.test(pass)) score++;
+    if (/[^A-Za-z0-9]/.test(pass)) score++;
+    if (score <= 1) return { label: 'Weak', color: '#E53935', width: '25%' };
+    if (score <= 2) return { label: 'Fair', color: '#FB8C00', width: '50%' };
+    if (score <= 3) return { label: 'Good', color: '#FDD835', width: '75%' };
+    return { label: 'Strong', color: '#43A047', width: '100%' };
+  };
+
+  const passwordStrength = getPasswordStrength(password);
 
   const handleSignup = async () => {
     if (!name || !email || !password || !confirmPassword) {
@@ -81,14 +101,13 @@ export default function SignupScreen() {
       >
         <View style={[styles.card, { backgroundColor: theme.card, shadowColor: theme.shadow }]}>
 
-          {/* Top row */}
           <View style={styles.topRow}>
             <Text style={styles.brandLabel}>GEOLOCK</Text>
             <TouchableOpacity
               style={[styles.themeToggle, { backgroundColor: theme.toggleBg }]}
               onPress={() => setDarkMode(!darkMode)}
             >
-              <Text style={styles.themeIcon}>{darkMode ? '☀️' : '🌙'}</Text>
+              {darkMode ? <SunIcon size={18} /> : <MoonIcon size={18} />}
             </TouchableOpacity>
           </View>
 
@@ -97,10 +116,9 @@ export default function SignupScreen() {
             Sign up to join your workforce workspace.
           </Text>
 
-          {/* Full Name */}
           <Text style={[styles.fieldLabel, { color: theme.subtext }]}>FULL NAME</Text>
           <View style={[styles.inputBox, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
-            <Text style={styles.inputIcon}>👤</Text>
+            <UserIcon size={18} color={theme.subtext} />
             <TextInput
               style={[styles.input, { color: theme.text }]}
               value={name}
@@ -111,10 +129,9 @@ export default function SignupScreen() {
             />
           </View>
 
-          {/* Email */}
           <Text style={[styles.fieldLabel, { color: theme.subtext }]}>EMAIL</Text>
           <View style={[styles.inputBox, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
-            <Text style={styles.inputIcon}>✉</Text>
+            <MailIcon size={18} color={theme.subtext} />
             <TextInput
               style={[styles.input, { color: theme.text }]}
               value={email}
@@ -126,10 +143,9 @@ export default function SignupScreen() {
             />
           </View>
 
-          {/* Password */}
           <Text style={[styles.fieldLabel, { color: theme.subtext }]}>PASSWORD</Text>
-          <View style={[styles.inputBox, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
-            <Text style={styles.inputIcon}>🔒</Text>
+          <View style={[styles.inputBox, { backgroundColor: theme.inputBg, borderColor: theme.border, marginBottom: 4 }]}>
+            <LockIcon size={18} color={theme.subtext} />
             <TextInput
               style={[styles.input, { color: theme.text }]}
               value={password}
@@ -139,14 +155,21 @@ export default function SignupScreen() {
               secureTextEntry={!showPassword}
             />
             <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
-              <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁'}</Text>
+              {showPassword ? <EyeOffIcon size={18} color={theme.subtext} /> : <EyeIcon size={18} color={theme.subtext} />}
             </TouchableOpacity>
           </View>
+          {password.length > 0 && (
+            <View style={styles.strengthContainer}>
+              <View style={styles.strengthBarBg}>
+                <View style={[styles.strengthBarFill, { width: passwordStrength.width, backgroundColor: passwordStrength.color }]} />
+              </View>
+              <Text style={[styles.strengthLabel, { color: passwordStrength.color }]}>{passwordStrength.label}</Text>
+            </View>
+          )}
 
-          {/* Confirm Password */}
           <Text style={[styles.fieldLabel, { color: theme.subtext }]}>CONFIRM PASSWORD</Text>
           <View style={[styles.inputBox, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
-            <Text style={styles.inputIcon}>🔒</Text>
+            <LockIcon size={18} color={theme.subtext} />
             <TextInput
               style={[styles.input, { color: theme.text }]}
               value={confirmPassword}
@@ -156,11 +179,10 @@ export default function SignupScreen() {
               secureTextEntry={!showConfirm}
             />
             <TouchableOpacity onPress={() => setShowConfirm(!showConfirm)} style={styles.eyeBtn}>
-              <Text style={styles.eyeIcon}>{showConfirm ? '🙈' : '👁'}</Text>
+              {showConfirm ? <EyeOffIcon size={18} color={theme.subtext} /> : <EyeIcon size={18} color={theme.subtext} />}
             </TouchableOpacity>
           </View>
 
-          {/* Signup Button */}
           <TouchableOpacity
             style={[styles.signupBtn, loading && styles.signupBtnDisabled]}
             onPress={handleSignup}
@@ -173,7 +195,6 @@ export default function SignupScreen() {
             }
           </TouchableOpacity>
 
-          {/* Go to Login */}
           <TouchableOpacity style={styles.loginRow} onPress={() => navigation.navigate('Login')}>
             <Text style={[styles.loginText, { color: theme.subtext }]}>Already have an account?  </Text>
             <Text style={styles.loginLink}>Log In</Text>
@@ -201,19 +222,20 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   brandLabel: { color: GREEN, fontSize: 12, fontWeight: '800', letterSpacing: 2 },
   themeToggle: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  themeIcon: { fontSize: 16 },
   title: { fontSize: 26, fontWeight: '800', marginBottom: 6 },
   subtitle: { fontSize: 14, marginBottom: 24, lineHeight: 20 },
   fieldLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 8 },
   inputBox: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 14 : 4, marginBottom: 16, gap: 10 },
-  inputIcon: { fontSize: 16 },
   input: { flex: 1, fontSize: 14 },
   eyeBtn: { padding: 4 },
-  eyeIcon: { fontSize: 16 },
   signupBtn: { backgroundColor: GREEN, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 16, marginTop: 4, shadowColor: GREEN, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 6 },
   signupBtnDisabled: { backgroundColor: '#3A7A50', shadowOpacity: 0 },
   signupBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   loginRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 4 },
   loginText: { fontSize: 13 },
   loginLink: { color: GREEN, fontSize: 13, fontWeight: '700' },
+  strengthContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16, paddingHorizontal: 2 },
+  strengthBarBg: { flex: 1, height: 5, borderRadius: 3, backgroundColor: '#E0E0E0' },
+  strengthBarFill: { height: 5, borderRadius: 3 },
+  strengthLabel: { fontSize: 11, fontWeight: '700', width: 45 },
 });

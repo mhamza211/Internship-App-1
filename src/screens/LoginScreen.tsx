@@ -16,6 +16,9 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { supabase } from '../lib/supabase';
+import {
+  LockIcon, SunIcon, MoonIcon, MailIcon, EyeIcon, EyeOffIcon, CheckIcon,
+} from '../components/Icons';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -66,7 +69,7 @@ export default function LoginScreen() {
               style={[styles.themeToggle, { backgroundColor: theme.toggleBg }]}
               onPress={() => setDarkMode(!darkMode)}
             >
-              <Text style={styles.themeIcon}>{darkMode ? '☀️' : '🌙'}</Text>
+              {darkMode ? <SunIcon size={18} /> : <MoonIcon size={18} />}
             </TouchableOpacity>
           </View>
 
@@ -82,7 +85,7 @@ export default function LoginScreen() {
 
           <Text style={[styles.fieldLabel, { color: theme.subtext }]}>EMAIL</Text>
           <View style={[styles.inputBox, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
-            <Text style={styles.inputIcon}>✉</Text>
+            <MailIcon size={18} color={theme.subtext} />
             <TextInput
               style={[styles.input, { color: theme.text }]}
               value={email}
@@ -96,7 +99,7 @@ export default function LoginScreen() {
 
           <Text style={[styles.fieldLabel, { color: theme.subtext }]}>PASSWORD</Text>
           <View style={[styles.inputBox, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
-            <Text style={styles.inputIcon}>🔒</Text>
+            <LockIcon size={18} color={theme.subtext} />
             <TextInput
               style={[styles.input, { color: theme.text }]}
               value={password}
@@ -106,14 +109,14 @@ export default function LoginScreen() {
               secureTextEntry={!showPassword}
             />
             <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
-              <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁'}</Text>
+              {showPassword ? <EyeOffIcon size={18} color={theme.subtext} /> : <EyeIcon size={18} color={theme.subtext} />}
             </TouchableOpacity>
           </View>
 
           <View style={styles.rememberRow}>
             <TouchableOpacity style={styles.rememberLeft} onPress={() => setRememberMe(!rememberMe)} activeOpacity={0.7}>
               <View style={[styles.checkbox, { borderColor: GREEN }, rememberMe ? styles.checkboxChecked : styles.checkboxUnchecked]}>
-                {rememberMe && <Text style={styles.checkmark}>✓</Text>}
+                {rememberMe && <CheckIcon size={11} color="#FFF" />}
               </View>
               <Text style={[styles.rememberText, { color: theme.text }]}>Remember me</Text>
             </TouchableOpacity>
@@ -161,7 +164,6 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   brandLabel: { color: GREEN, fontSize: 12, fontWeight: '800', letterSpacing: 2 },
   themeToggle: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  themeIcon: { fontSize: 16 },
   title: { fontSize: 26, fontWeight: '800', marginBottom: 6 },
   subtitle: { fontSize: 14, marginBottom: 24, lineHeight: 20 },
   roleBox: { borderRadius: 14, padding: 14, marginBottom: 20 },
@@ -170,16 +172,13 @@ const styles = StyleSheet.create({
   roleBtnText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
   fieldLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 8 },
   inputBox: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 14 : 4, marginBottom: 16, gap: 10 },
-  inputIcon: { fontSize: 16 },
   input: { flex: 1, fontSize: 14 },
   eyeBtn: { padding: 4 },
-  eyeIcon: { fontSize: 16 },
   rememberRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   rememberLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   checkbox: { width: 18, height: 18, borderRadius: 4, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   checkboxChecked: { backgroundColor: GREEN },
   checkboxUnchecked: { backgroundColor: 'transparent' },
-  checkmark: { color: '#FFF', fontSize: 11, fontWeight: '800' },
   rememberText: { fontSize: 13 },
   forgotText: { color: GREEN, fontSize: 13, fontWeight: '600' },
   loginBtn: { backgroundColor: GREEN, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 16, shadowColor: GREEN, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 6 },

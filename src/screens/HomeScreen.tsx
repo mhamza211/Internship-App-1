@@ -7,8 +7,14 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
-import { hasCheckedInToday, fetchMyAttendance } from '../lib/attendance';  // ← NEW
-import { AttendanceRecord } from '../types/attendance';                     // ← NEW
+import { hasCheckedInToday, fetchMyAttendance } from '../lib/attendance';
+import { AttendanceRecord } from '../types/attendance';
+import { supabase } from '../lib/supabase';
+import {
+  UserIcon, ClockIcon, CheckCircleIcon, WarningIcon,
+  MapPinIcon, CalendarIcon, HomeIcon, SettingsIcon,
+  CheckIcon, CrossIcon, ArrowRightIcon,
+} from '../components/Icons';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
 
@@ -22,19 +28,27 @@ function getGreeting(): string {
 export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
   const [activeTab, setActiveTab] = useState<'Home' | 'Attendance' | 'History' | 'Settings'>('Home');
+  const [userName, setUserName] = useState('');
 
-  // ── Supabase state ────────────────────────────────────────
   const [checkedInToday, setCheckedInToday] = useState(false);
   const [recentRecords, setRecentRecords] = useState<AttendanceRecord[]>([]);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [monthStats, setMonthStats] = useState({ present: 0, absent: 0, leave: 0 });
 
-  // ── Load attendance data from Supabase ───────────────────
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserName(user.user_metadata?.full_name || user.email || '');
+      }
+    };
+    fetchUser();
+  }, []);
+
   useEffect(() => {
     loadAttendanceData();
   }, []);
 
-  // Reload when user comes back from CheckIn screen
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       loadAttendanceData();
@@ -47,7 +61,6 @@ export default function HomeScreen() {
     try {
       const now = new Date();
 
-      // Fetch enough records to cover a full month (was 10, too small for stats)
       const [alreadyCheckedIn, recent] = await Promise.all([
         hasCheckedInToday(),
         fetchMyAttendance(40),
@@ -55,7 +68,6 @@ export default function HomeScreen() {
       setCheckedInToday(alreadyCheckedIn);
       setRecentRecords(recent);
 
-      // Records belonging to the current calendar month
       const thisMonthRecords = recent.filter(r => {
         const d = new Date(r.check_in_time);
         return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
@@ -64,18 +76,14 @@ export default function HomeScreen() {
       const presentCount = thisMonthRecords.filter(r => r.status === 'present').length;
       const lateCount = thisMonthRecords.filter(r => r.status === 'late').length;
 
-      // Dates (as plain "toDateString" keys) that already have a record this month
       const recordedDates = new Set(
         thisMonthRecords.map(r => new Date(r.check_in_time).toDateString())
       );
 
-      // Walk every day from the 1st of the month up to YESTERDAY (today is excluded —
-      // the user may still check in later today, so it shouldn't count as absent yet).
-      // Assumes a Mon–Fri work week; change the isWorkday check below if Saturdays count too.
       let absentCount = 0;
       for (let day = 1; day < now.getDate(); day++) {
         const d = new Date(now.getFullYear(), now.getMonth(), day);
-        const dow = d.getDay(); // 0 = Sun, 6 = Sat
+        const dow = d.getDay();
         const isWorkday = dow !== 0 && dow !== 6;
         if (isWorkday && !recordedDates.has(d.toDateString())) {
           absentCount++;
@@ -85,7 +93,7 @@ export default function HomeScreen() {
       setMonthStats({
         present: presentCount + lateCount,
         absent: absentCount,
-        leave: 0, // no 'leave' status in current schema — wire this up once leave requests exist
+        leave: 0,
       });
     } catch (e) {
       console.error('Failed to load attendance:', e);
@@ -93,7 +101,6 @@ export default function HomeScreen() {
     setLoadingStatus(false);
   };
 
-  // ── Render recent attendance rows ─────────────────────────
   const renderRow = (item: AttendanceRecord, index: number) => {
     const isPresent = item.status === 'present' || item.status === 'late';
     const isLast = index === recentRecords.length - 1;
@@ -111,9 +118,10 @@ export default function HomeScreen() {
       >
         <View style={styles.attendanceLeft}>
           <View style={[styles.statusCircle, isPresent ? styles.circlePresent : styles.circleAbsent]}>
-            <Text style={[styles.circleIcon, !isPresent && styles.circleIconAbsent]}>
-              {isPresent ? '✓' : '✕'}
-            </Text>
+            {isPresent
+              ? <CheckIcon size={14} color="#388E3C" />
+              : <CrossIcon size={14} color="#E53935" />
+            }
           </View>
           <View style={styles.attendanceInfo}>
             <Text style={styles.attendanceDate}>{dateStr}</Text>
@@ -137,58 +145,59 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor="#3D2C8D" />
 
-      {/* ── FIXED HEADER ── */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View>
             <Text style={styles.greeting}>{getGreeting()}</Text>
-            <Text style={styles.userName}>Muhammad Hamza</Text>
+            <Text style={styles.userName}>{userName}</Text>
           </View>
           <View style={styles.avatarCircle}>
-            <Text style={styles.avatarIcon}>👤</Text>
+            <UserIcon size={20} color="#FFFFFF" />
           </View>
         </View>
 
-        {/* Today's status — now from Supabase */}
         <View style={styles.statusBox}>
           <View>
             <Text style={styles.statusBoxLabel}>Today's Status</Text>
             {loadingStatus ? (
               <ActivityIndicator color="#fff" size="small" style={styles.statusLoader} />
             ) : (
-              <Text style={styles.statusBoxValue}>
-                {checkedInToday ? '✅ Checked In' : '⚠️ Not Checked In'}
-              </Text>
+              <View style={styles.statusValueRow}>
+                {checkedInToday
+                  ? <><CheckCircleIcon size={18} color="#4CAF50" /><Text style={styles.statusBoxValue}> Checked In</Text></>
+                  : <><WarningIcon size={18} color="#F59E0B" /><Text style={styles.statusBoxValue}> Not Checked In</Text></>
+                }
+              </View>
             )}
           </View>
-          <Text style={styles.clockIcon}>🕐</Text>
+          <ClockIcon size={22} color="#FFFFFF" />
         </View>
       </View>
 
-      {/* ── SCROLLABLE BODY ── */}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Check In Button — changes color if already checked in */}
         <TouchableOpacity
           style={[styles.checkInButton, checkedInToday && styles.checkInButtonDone]}
           onPress={() => navigation.navigate('CheckIn')}
           activeOpacity={0.85}
           disabled={checkedInToday}
         >
-          <Text style={styles.checkInArrow}>{checkedInToday ? '✓' : '→'}</Text>
+          {checkedInToday
+            ? <CheckIcon size={18} color="#FFFFFF" />
+            : <ArrowRightIcon size={18} color="#FFFFFF" />
+          }
           <Text style={styles.checkInText}>
             {checkedInToday ? 'Already Checked In Today' : 'Check In Now'}
           </Text>
         </TouchableOpacity>
 
-        {/* Location Status */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <View style={styles.cardTitleRow}>
-              <Text style={styles.locationPin}>📍</Text>
+              <MapPinIcon size={16} color="#E53935" />
               <Text style={styles.cardTitle}>Location Status</Text>
             </View>
             <View style={styles.verifiedBadge}>
@@ -199,10 +208,9 @@ export default function HomeScreen() {
           <Text style={styles.locationAddress}>123 Market Street</Text>
         </View>
 
-        {/* This Month — now from real Supabase data */}
         <View style={styles.card}>
           <View style={styles.cardTitleRow}>
-            <Text style={styles.calendarIcon}>📅</Text>
+            <CalendarIcon size={16} color="#6C63FF" />
             <Text style={styles.cardTitle}>This Month</Text>
           </View>
           {loadingStatus ? (
@@ -231,7 +239,6 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* Recent Attendance — now from real Supabase data */}
         <View style={styles.card}>
           <View style={styles.cardTitleRow}>
             <Text style={styles.cardTitle}>Recent Attendance</Text>
@@ -253,10 +260,9 @@ export default function HomeScreen() {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* ── FIXED BOTTOM TAB BAR ── */}
       <View style={styles.tabBar}>
         <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('Home')}>
-          <Text style={styles.tabIcon}>🏠</Text>
+          <HomeIcon size={20} color={activeTab === 'Home' ? PURPLE : '#888'} />
           <Text style={[styles.tabLabel, activeTab === 'Home' && styles.tabLabelActive]}>Home</Text>
           {activeTab === 'Home' && <View style={styles.tabActiveIndicator} />}
         </TouchableOpacity>
@@ -265,7 +271,7 @@ export default function HomeScreen() {
           style={styles.tabItem}
           onPress={() => { setActiveTab('Attendance'); navigation.navigate('Attendance'); }}
         >
-          <Text style={styles.tabIcon}>🕐</Text>
+          <ClockIcon size={20} color={activeTab === 'Attendance' ? PURPLE : '#888'} />
           <Text style={[styles.tabLabel, activeTab === 'Attendance' && styles.tabLabelActive]}>Attendance</Text>
           {activeTab === 'Attendance' && <View style={styles.tabActiveIndicator} />}
         </TouchableOpacity>
@@ -274,7 +280,7 @@ export default function HomeScreen() {
           style={styles.tabItem}
           onPress={() => { setActiveTab('Settings'); navigation.navigate('Settings'); }}
         >
-          <Text style={styles.tabIcon}>⚙️</Text>
+          <SettingsIcon size={20} color={activeTab === 'Settings' ? PURPLE : '#888'} />
           <Text style={[styles.tabLabel, activeTab === 'Settings' && styles.tabLabelActive]}>Settings</Text>
           {activeTab === 'Settings' && <View style={styles.tabActiveIndicator} />}
         </TouchableOpacity>
@@ -289,7 +295,6 @@ const GREEN  = '#5DBB7A';
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F5F5F8' },
 
-  // ── Header ────────────────────────────────────────────────
   header: {
     backgroundColor: PURPLE,
     paddingHorizontal: 20,
@@ -315,7 +320,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarIcon: { fontSize: 20 },
   statusBox: {
     backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 14,
     paddingHorizontal: 16, paddingVertical: 12,
@@ -323,13 +327,11 @@ const styles = StyleSheet.create({
   },
   statusBoxLabel: { color: '#C8C0F0', fontSize: 12, marginBottom: 4 },
   statusBoxValue: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
-  clockIcon: { fontSize: 22 },
+  statusValueRow: { flexDirection: 'row', alignItems: 'center' },
 
-  // ── Scroll ────────────────────────────────────────────────
   scrollView: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 24, gap: 14 },
 
-  // Check In Button
   checkInButton: {
     backgroundColor: GREEN, borderRadius: 14, paddingVertical: 16,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
@@ -341,10 +343,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0,
     elevation: 0,
   },
-  checkInArrow: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
-  checkInText:  { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+  checkInText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
 
-  // Cards
   card: {
     backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
@@ -356,8 +356,6 @@ const styles = StyleSheet.create({
   },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   cardTitle: { fontSize: 16, fontWeight: '700', color: '#1A1A2E' },
-  locationPin: { fontSize: 16 },
-  calendarIcon: { fontSize: 16 },
   verifiedBadge: {
     backgroundColor: '#E8F5E9', borderRadius: 20,
     paddingHorizontal: 10, paddingVertical: 3,
@@ -366,7 +364,6 @@ const styles = StyleSheet.create({
   locationName: { color: GREEN, fontSize: 14, fontWeight: '600', marginBottom: 2 },
   locationAddress: { color: GREEN, fontSize: 12 },
 
-  // Stats
   statsRow: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 8 },
   statItem: { alignItems: 'center', gap: 8 },
   statCircle: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
@@ -377,12 +374,10 @@ const styles = StyleSheet.create({
   statNumberDark: { color: '#4A4A6A' },
   statLabel: { fontSize: 13, color: '#888', fontWeight: '500' },
 
-  // Empty state
   emptyBox: { alignItems: 'center', paddingVertical: 20 },
   emptyText: { fontSize: 14, fontWeight: '600', color: '#888' },
   emptySubText: { fontSize: 12, color: '#AAA', marginTop: 4 },
 
-  // Attendance list
   attendanceList: { marginTop: 10 },
   attendanceRow: {
     flexDirection: 'row', alignItems: 'center',
@@ -395,13 +390,10 @@ const styles = StyleSheet.create({
   },
   circlePresent: { backgroundColor: '#E8F5E9', borderWidth: 2, borderColor: GREEN },
   circleAbsent:  { backgroundColor: '#FFEBEE', borderWidth: 2, borderColor: '#E53935' },
-  circleIcon:       { fontSize: 14, fontWeight: '700', color: '#388E3C' },
-  circleIconAbsent: { color: '#E53935' },
   attendanceInfo: { gap: 2 },
   attendanceDate: { fontSize: 14, fontWeight: '600', color: '#1A1A2E' },
   attendanceTime: { fontSize: 12, color: '#888' },
 
-  // Badges
   presentBadge: {
     backgroundColor: '#E8F5E9', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20,
   },
@@ -421,7 +413,6 @@ const styles = StyleSheet.create({
   recentLoader: { marginLeft: 8 },
   bottomSpacer: { height: 16 },
 
-  // Tab Bar
   tabBar: {
     flexDirection: 'row', backgroundColor: '#FFFFFF',
     borderTopWidth: 1, borderTopColor: '#EFEFEF',
@@ -429,7 +420,6 @@ const styles = StyleSheet.create({
     paddingTop: 10,
   },
   tabItem: { flex: 1, alignItems: 'center', gap: 3 },
-  tabIcon: { fontSize: 20 },
   tabLabel: { fontSize: 11, color: '#888' },
   tabLabelActive: { color: PURPLE, fontWeight: '700' },
   tabActiveIndicator: {

@@ -1,13 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, StatusBar, SafeAreaView, Platform, Alert, Switch,
-  Modal, TextInput, ActivityIndicator,
+  Modal, TextInput, ActivityIndicator, DimensionValue,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { supabase } from '../lib/supabase';
+import {
+  LockIcon, SunIcon, MoonIcon, UserIcon, GlobeIcon, ShieldIcon,
+  LogoutIcon, BellIcon, BellOffIcon, HomeIcon, ClockIcon, SettingsIcon,
+} from '../components/Icons';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 
@@ -20,9 +24,23 @@ export default function SettingsScreen() {
   const [notifications, setNotifications] = useState(true);
   const [activeTab, setActiveTab] = useState<'Home' | 'Attendance' | 'History' | 'Settings'>('Settings');
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [userName, setUserName] = useState('');
+  const [userEmail, setUserEmail] = useState('');
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserEmail(user.email ?? '');
+        setUserName(user.user_metadata?.full_name ?? '');
+      }
+    };
+    fetchUser();
+  }, []);
 
   const bg        = lightMode ? '#F0F2F8' : '#1A1A2E';
   const cardBg    = lightMode ? '#FFFFFF'  : '#252840';
@@ -35,13 +53,13 @@ export default function SettingsScreen() {
     setNotifications(value);
     if (value) {
       Alert.alert(
-        '🔔 Notifications Enabled',
+        'Notifications Enabled',
         'You will now receive attendance reminders and check-in alerts.',
         [{ text: 'OK' }]
       );
     } else {
       Alert.alert(
-        '🔕 Notifications Disabled',
+        'Notifications Disabled',
         'You will no longer receive attendance reminders and alerts.',
         [{ text: 'OK' }]
       );
@@ -61,9 +79,25 @@ export default function SettingsScreen() {
     ]);
   };
 
+  const getPasswordStrength = (pass: string): { label: string; color: string; width: DimensionValue } => {
+    if (!pass) return { label: '', color: 'transparent', width: '0%' };
+    let score = 0;
+    if (pass.length >= 6) score++;
+    if (pass.length >= 10) score++;
+    if (/[A-Z]/.test(pass)) score++;
+    if (/[0-9]/.test(pass)) score++;
+    if (/[^A-Za-z0-9]/.test(pass)) score++;
+    if (score <= 1) return { label: 'Weak', color: '#E53935', width: '25%' };
+    if (score <= 2) return { label: 'Fair', color: '#FB8C00', width: '50%' };
+    if (score <= 3) return { label: 'Good', color: '#FDD835', width: '75%' };
+    return { label: 'Strong', color: '#43A047', width: '100%' };
+  };
+
+  const passwordStrength = getPasswordStrength(newPassword);
+
   const handleUpdatePassword = async () => {
-    if (!newPassword || !confirmPassword) {
-      Alert.alert('Error', 'Please fill in both fields.');
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      Alert.alert('Error', 'Please fill in all fields.');
       return;
     }
     if (newPassword.length < 6) {
@@ -76,6 +110,18 @@ export default function SettingsScreen() {
     }
 
     setUpdatingPassword(true);
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: userEmail,
+      password: currentPassword,
+    });
+
+    if (signInError) {
+      setUpdatingPassword(false);
+      Alert.alert('Failed', 'Current password is incorrect.');
+      return;
+    }
+
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     setUpdatingPassword(false);
 
@@ -84,6 +130,7 @@ export default function SettingsScreen() {
     } else {
       Alert.alert('Success', 'Your password has been updated.');
       setShowPasswordModal(false);
+      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     }
@@ -93,11 +140,10 @@ export default function SettingsScreen() {
     <SafeAreaView style={[styles.safeArea, { backgroundColor: bg }]}>
       <StatusBar barStyle="light-content" backgroundColor={PURPLE} />
 
-      {/* Fixed Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.headerBrand}>
-            <Text style={styles.headerLock}>🔒</Text>
+            <LockIcon size={18} color="#FFFFFF" />
             <View>
               <Text style={styles.headerAppName}>GEOLOCK</Text>
               <Text style={styles.headerRole}>EMPLOYEE</Text>
@@ -107,7 +153,7 @@ export default function SettingsScreen() {
             style={styles.headerThemeBtn}
             onPress={() => setLightMode(!lightMode)}
           >
-            <Text style={styles.headerThemeIcon}>{lightMode ? '🌙' : '☀️'}</Text>
+            {lightMode ? <MoonIcon size={16} color="#FFC107" /> : <SunIcon size={16} color="#FFC107" />}
           </TouchableOpacity>
         </View>
         <Text style={styles.headerTitle}>Settings</Text>
@@ -115,19 +161,18 @@ export default function SettingsScreen() {
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-        {/* Profile Settings */}
         <View style={[styles.section, { backgroundColor: cardBg }]}>
           <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionIcon}>👤</Text>
+            <UserIcon size={16} color="#6C63FF" />
             <Text style={[styles.sectionTitle, { color: textColor }]}>Profile settings</Text>
           </View>
           <View style={[styles.fieldBox, { backgroundColor: fieldBg }]}>
             <Text style={styles.fieldLabel}>NAME</Text>
-            <Text style={[styles.fieldValue, { color: textColor }]}>Muhammad Hamza</Text>
+            <Text style={[styles.fieldValue, { color: textColor }]}>{userName || 'N/A'}</Text>
           </View>
           <View style={[styles.fieldBox, { backgroundColor: fieldBg }]}>
             <Text style={styles.fieldLabel}>EMAIL</Text>
-            <Text style={[styles.fieldValue, { color: textColor }]}>mhamza8732@gmail.com</Text>
+            <Text style={[styles.fieldValue, { color: textColor }]}>{userEmail || 'N/A'}</Text>
           </View>
           <View style={[styles.fieldBox, styles.noMarginBottom, { backgroundColor: fieldBg }]}>
             <Text style={styles.fieldLabel}>ROLE</Text>
@@ -135,17 +180,15 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Theme and Notifications */}
         <View style={[styles.section, { backgroundColor: cardBg }]}>
           <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionIcon}>🌐</Text>
+            <GlobeIcon size={16} color="#4FC3F7" />
             <Text style={[styles.sectionTitle, { color: textColor }]}>Theme and notifications</Text>
           </View>
 
-          {/* Light/Dark Mode */}
           <View style={[styles.settingRow, { backgroundColor: fieldBg }]}>
             <View style={styles.settingLeft}>
-              <Text style={styles.settingRowIcon}>{lightMode ? '☀️' : '🌙'}</Text>
+              {lightMode ? <SunIcon size={16} color="#FFC107" /> : <MoonIcon size={16} color="#FFC107" />}
               <Text style={[styles.settingRowText, { color: textColor }]}>
                 {lightMode ? 'Light mode' : 'Dark mode'}
               </Text>
@@ -158,10 +201,9 @@ export default function SettingsScreen() {
             />
           </View>
 
-          {/* Notifications */}
           <View style={[styles.settingRow, styles.noMarginBottom, { backgroundColor: fieldBg }]}>
             <View style={styles.settingLeft}>
-              <Text style={styles.settingRowIcon}>{notifications ? '🔔' : '🔕'}</Text>
+              {notifications ? <BellIcon size={16} color="#FFC107" /> : <BellOffIcon size={16} color="#888" />}
               <View>
                 <Text style={[styles.settingRowText, { color: textColor }]}>Notifications</Text>
                 <Text style={[styles.settingRowSub, { color: subColor }]}>
@@ -178,10 +220,9 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Password Change */}
         <View style={[styles.section, { backgroundColor: cardBg }]}>
           <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionIcon}>🔒</Text>
+            <LockIcon size={16} color="#FFC107" />
             <Text style={[styles.sectionTitle, { color: textColor }]}>Password change</Text>
           </View>
           <TouchableOpacity
@@ -193,10 +234,9 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Security */}
         <View style={[styles.section, { backgroundColor: cardBg }]}>
           <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionIcon}>🛡️</Text>
+            <ShieldIcon size={16} color="#4CAF50" />
             <Text style={[styles.sectionTitle, { color: textColor }]}>Security</Text>
           </View>
           <Text style={[styles.securityText, { color: subColor }]}>
@@ -207,7 +247,7 @@ export default function SettingsScreen() {
             onPress={handleLogout}
             activeOpacity={0.85}
           >
-            <Text style={styles.logoutIcon}>→</Text>
+            <LogoutIcon size={16} color="#E53935" />
             <Text style={styles.logoutText}>Logout</Text>
           </TouchableOpacity>
         </View>
@@ -215,13 +255,12 @@ export default function SettingsScreen() {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* Bottom Tab Bar — 3 tabs */}
       <View style={[styles.tabBar, { backgroundColor: cardBg, borderTopColor: borderColor }]}>
         <TouchableOpacity
           style={styles.tabItem}
           onPress={() => { setActiveTab('Home'); navigation.navigate('Home'); }}
         >
-          <Text style={styles.tabIcon}>🏠</Text>
+          <HomeIcon size={20} color={activeTab === 'Home' ? PURPLE : subColor} />
           <Text style={[styles.tabLabel, { color: subColor }, activeTab === 'Home' && styles.tabLabelActive]}>Home</Text>
           {activeTab === 'Home' && <View style={styles.tabActiveIndicator} />}
         </TouchableOpacity>
@@ -230,7 +269,7 @@ export default function SettingsScreen() {
           style={styles.tabItem}
           onPress={() => { setActiveTab('Attendance'); navigation.navigate('Attendance'); }}
         >
-          <Text style={styles.tabIcon}>🕐</Text>
+          <ClockIcon size={20} color={activeTab === 'Attendance' ? PURPLE : subColor} />
           <Text style={[styles.tabLabel, { color: subColor }, activeTab === 'Attendance' && styles.tabLabelActive]}>Attendance</Text>
           {activeTab === 'Attendance' && <View style={styles.tabActiveIndicator} />}
         </TouchableOpacity>
@@ -239,7 +278,7 @@ export default function SettingsScreen() {
           style={styles.tabItem}
           onPress={() => setActiveTab('Settings')}
         >
-          <Text style={styles.tabIcon}>⚙️</Text>
+          <SettingsIcon size={20} color={activeTab === 'Settings' ? PURPLE : subColor} />
           <Text style={[styles.tabLabel, { color: subColor }, activeTab === 'Settings' && styles.tabLabelActive]}>Settings</Text>
           {activeTab === 'Settings' && <View style={styles.tabActiveIndicator} />}
         </TouchableOpacity>
@@ -251,12 +290,28 @@ export default function SettingsScreen() {
 
             <TextInput
               style={[styles.modalInput, { backgroundColor: fieldBg, color: textColor }]}
+              placeholder="Current password"
+              placeholderTextColor="#AAA"
+              secureTextEntry
+              value={currentPassword}
+              onChangeText={setCurrentPassword}
+            />
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: fieldBg, color: textColor, marginBottom: 4 }]}
               placeholder="New password"
               placeholderTextColor="#AAA"
               secureTextEntry
               value={newPassword}
               onChangeText={setNewPassword}
             />
+            {newPassword.length > 0 && (
+              <View style={styles.strengthContainer}>
+                <View style={styles.strengthBarBg}>
+                  <View style={[styles.strengthBarFill, { width: passwordStrength.width, backgroundColor: passwordStrength.color }]} />
+                </View>
+                <Text style={[styles.strengthLabel, { color: passwordStrength.color }]}>{passwordStrength.label}</Text>
+              </View>
+            )}
             <TextInput
               style={[styles.modalInput, { backgroundColor: fieldBg, color: textColor }]}
               placeholder="Confirm new password"
@@ -271,6 +326,7 @@ export default function SettingsScreen() {
                 style={[styles.modalCancelBtn, { backgroundColor: fieldBg }]}
                 onPress={() => {
                   setShowPasswordModal(false);
+                  setCurrentPassword('');
                   setNewPassword('');
                   setConfirmPassword('');
                 }}
@@ -309,17 +365,14 @@ const styles = StyleSheet.create({
   },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   headerBrand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerLock: { fontSize: 18 },
   headerAppName: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', letterSpacing: 1.5 },
   headerRole: { color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600', letterSpacing: 1 },
   headerThemeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
-  headerThemeIcon: { fontSize: 16 },
   headerTitle: { color: '#FFFFFF', fontSize: 26, fontWeight: '800' },
   scrollView: { flex: 1 },
   scrollContent: { padding: 16, gap: 14, paddingBottom: 32 },
   section: { borderRadius: 16, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
-  sectionIcon: { fontSize: 16 },
   sectionTitle: { fontSize: 15, fontWeight: '700' },
   fieldBox: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 10 },
   fieldLabel: { fontSize: 10, fontWeight: '700', color: '#AAA', letterSpacing: 1, marginBottom: 4 },
@@ -328,18 +381,15 @@ const styles = StyleSheet.create({
   bottomSpacer: { height: 8 },
   settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 10 },
   settingLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  settingRowIcon: { fontSize: 16 },
   settingRowText: { fontSize: 14, fontWeight: '600' },
   settingRowSub: { fontSize: 11, marginTop: 2 },
   actionBtn: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 14 },
   actionBtnText: { fontSize: 14, fontWeight: '600' },
   securityText: { fontSize: 13, lineHeight: 20, marginBottom: 14 },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 14 },
-  logoutIcon: { fontSize: 16, color: '#E53935' },
   logoutText: { fontSize: 14, fontWeight: '700', color: '#E53935' },
   tabBar: { flexDirection: 'row', borderTopWidth: 1, paddingBottom: Platform.OS === 'ios' ? 20 : 8, paddingTop: 10 },
   tabItem: { flex: 1, alignItems: 'center', gap: 3 },
-  tabIcon: { fontSize: 20 },
   tabLabel: { fontSize: 11 },
   tabLabelActive: { color: PURPLE, fontWeight: '700' },
   tabActiveIndicator: { position: 'absolute', bottom: -10, width: 20, height: 3, backgroundColor: PURPLE, borderRadius: 2 },
@@ -354,4 +404,8 @@ const styles = StyleSheet.create({
   modalSaveBtn: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center', backgroundColor: GREEN },
   modalSaveBtnDisabled: { opacity: 0.7 },
   modalSaveText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+  strengthContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12, paddingHorizontal: 2 },
+  strengthBarBg: { flex: 1, height: 5, borderRadius: 3, backgroundColor: '#E0E0E0' },
+  strengthBarFill: { height: 5, borderRadius: 3 },
+  strengthLabel: { fontSize: 11, fontWeight: '700', width: 45 },
 });

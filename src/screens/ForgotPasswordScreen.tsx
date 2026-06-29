@@ -16,6 +16,9 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { supabase } from '../lib/supabase';
+import {
+  LockAltIcon, MailIcon, SunIcon, MoonIcon, CheckCircleIcon,
+} from '../components/Icons';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ForgotPassword'>;
 
@@ -62,27 +65,24 @@ export default function ForgotPasswordScreen() {
       >
         <View style={[styles.card, { backgroundColor: theme.card, shadowColor: theme.shadow }]}>
 
-          {/* Top row */}
           <View style={styles.topRow}>
             <Text style={styles.brandLabel}>GEOLOCK</Text>
             <TouchableOpacity
               style={[styles.themeToggle, { backgroundColor: theme.toggleBg }]}
               onPress={() => setDarkMode(!darkMode)}
             >
-              <Text style={styles.themeIcon}>{darkMode ? '☀️' : '🌙'}</Text>
+              {darkMode ? <SunIcon size={16} color="#FFC107" /> : <MoonIcon size={16} color="#FFC107" />}
             </TouchableOpacity>
           </View>
 
-          {/* Back button */}
           <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-            <Text style={[styles.backText, { color: theme.subtext }]}>← Back to Login</Text>
+            <Text style={[styles.backText, { color: theme.subtext }]}>Back to Login</Text>
           </TouchableOpacity>
 
           {!sent ? (
             <>
-              {/* Lock icon */}
               <View style={styles.iconBox}>
-                <Text style={styles.lockIcon}>🔐</Text>
+                <LockAltIcon size={52} color="#FFC107" />
               </View>
 
               <Text style={[styles.title, { color: theme.text }]}>Forgot Password?</Text>
@@ -92,7 +92,7 @@ export default function ForgotPasswordScreen() {
 
               <Text style={[styles.fieldLabel, { color: theme.subtext }]}>EMAIL ADDRESS</Text>
               <View style={[styles.inputBox, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
-                <Text style={styles.inputIcon}>✉</Text>
+                <MailIcon size={16} color={theme.subtext} />
                 <TextInput
                   style={[styles.input, { color: theme.text }]}
                   value={email}
@@ -117,10 +117,9 @@ export default function ForgotPasswordScreen() {
               </TouchableOpacity>
             </>
           ) : (
-            /* Success state */
             <View style={styles.successBox}>
               <View style={styles.successIconBox}>
-                <Text style={styles.successIcon}>✅</Text>
+                <CheckCircleIcon size={56} color="#4CAF50" />
               </View>
               <Text style={[styles.successTitle, { color: theme.text }]}>Email Sent!</Text>
               <Text style={[styles.successSub, { color: theme.subtext }]}>
@@ -166,23 +165,19 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   brandLabel: { color: GREEN, fontSize: 12, fontWeight: '800', letterSpacing: 2 },
   themeToggle: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  themeIcon: { fontSize: 16 },
   backBtn: { marginBottom: 24 },
   backText: { fontSize: 13, fontWeight: '600' },
   iconBox: { alignItems: 'center', marginBottom: 20 },
-  lockIcon: { fontSize: 52 },
   title: { fontSize: 26, fontWeight: '800', marginBottom: 8 },
   subtitle: { fontSize: 14, marginBottom: 28, lineHeight: 22 },
   fieldLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 8 },
   inputBox: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 14 : 4, marginBottom: 20, gap: 10 },
-  inputIcon: { fontSize: 16 },
   input: { flex: 1, fontSize: 14 },
   resetBtn: { backgroundColor: GREEN, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 16, shadowColor: GREEN, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 6 },
   resetBtnDisabled: { backgroundColor: '#3A7A50', shadowOpacity: 0 },
   resetBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   successBox: { alignItems: 'center', paddingTop: 10 },
   successIconBox: { marginBottom: 16 },
-  successIcon: { fontSize: 56 },
   successTitle: { fontSize: 24, fontWeight: '800', marginBottom: 12 },
   successSub: { fontSize: 14, lineHeight: 22, textAlign: 'center', marginBottom: 28 },
   successEmail: { color: GREEN, fontWeight: '700' },

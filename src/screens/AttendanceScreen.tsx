@@ -18,6 +18,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { fetchMyAttendance } from '../lib/attendance';
 import { AttendanceRecord } from '../types/attendance';
+import {
+  MapPinIcon, MoonIcon, SunIcon, ClockIcon, CalendarIcon,
+  CheckCircleIcon, CrossIcon, SearchIcon, DownloadIcon,
+  HomeIcon, SettingsIcon,
+} from '../components/Icons';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Attendance'>;
 
@@ -212,14 +217,14 @@ export default function AttendanceScreen() {
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.headerBrand}>
-            <Text style={styles.headerPin}>📍</Text>
+            <MapPinIcon size={16} color="#FFFFFF" />
             <View>
               <Text style={styles.headerApp}>GEOLOCK</Text>
               <Text style={styles.headerRole}>Employee</Text>
             </View>
           </View>
           <TouchableOpacity style={styles.headerThemeBtn} onPress={() => setLightMode(!lightMode)}>
-            <Text style={styles.headerThemeIcon}>{lightMode ? '🌙' : '☀️'}</Text>
+            {lightMode ? <MoonIcon size={16} color="#FFC107" /> : <SunIcon size={16} color="#FFC107" />}
           </TouchableOpacity>
         </View>
         <Text style={styles.headerTitle}>Attendance</Text>
@@ -244,28 +249,28 @@ export default function AttendanceScreen() {
           <View style={styles.statsGrid}>
             <View style={[styles.statCard, { backgroundColor: cardBg }]}>
               <View style={[styles.statIconBox, styles.statIconBoxGreen]}>
-                <Text style={styles.statIcon}>📅</Text>
+                <CalendarIcon size={18} color="#388E3C" />
               </View>
               <Text style={[styles.statNum, { color: textColor }]}>{totalDays}</Text>
               <Text style={[styles.statLabel, { color: subColor }]}>Total Days</Text>
             </View>
             <View style={[styles.statCard, { backgroundColor: cardBg }]}>
               <View style={[styles.statIconBox, styles.statIconBoxGreen]}>
-                <Text style={styles.statIcon}>✅</Text>
+                <CheckCircleIcon size={18} color="#388E3C" />
               </View>
               <Text style={[styles.statNum, { color: textColor }]}>{presentDays}</Text>
               <Text style={[styles.statLabel, { color: subColor }]}>Present</Text>
             </View>
             <View style={[styles.statCard, { backgroundColor: cardBg }]}>
               <View style={[styles.statIconBox, styles.statIconBoxOrange]}>
-                <Text style={styles.statIcon}>🕐</Text>
+                <ClockIcon size={18} color="#F57C00" />
               </View>
               <Text style={[styles.statNum, { color: textColor }]}>{lateDays}</Text>
               <Text style={[styles.statLabel, { color: subColor }]}>Late</Text>
             </View>
             <View style={[styles.statCard, { backgroundColor: cardBg }]}>
               <View style={[styles.statIconBox, styles.statIconBoxRed]}>
-                <Text style={styles.statIcon}>❌</Text>
+                <CrossIcon size={18} color="#E53935" />
               </View>
               <Text style={[styles.statNum, { color: textColor }]}>{absentDays}</Text>
               <Text style={[styles.statLabel, { color: subColor }]}>Absent</Text>
@@ -275,7 +280,7 @@ export default function AttendanceScreen() {
 
         <View style={[styles.card, { backgroundColor: cardBg }]}>
           <View style={[styles.searchRow, { backgroundColor: fieldBg }]}>
-            <Text style={styles.searchIcon}>🔍</Text>
+            <SearchIcon size={15} color="#888" />
             <TextInput
               style={[styles.searchInput, { color: textColor }]}
               placeholder="Search location or status"
@@ -306,10 +311,10 @@ export default function AttendanceScreen() {
               {exporting ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
-                <>
-                  <Text style={styles.exportIcon}>⬇</Text>
+                <View style={styles.exportContent}>
+                  <DownloadIcon size={13} color="#FFFFFF" />
                   <Text style={styles.exportText}>Export</Text>
-                </>
+                </View>
               )}
             </TouchableOpacity>
           </View>
@@ -331,7 +336,7 @@ export default function AttendanceScreen() {
                       <Text style={[styles.entryTime, { color: subColor }]}>-- : --</Text>
                     )}
                     <View style={styles.entryLocationRow}>
-                      <Text style={styles.locationPin}>📍</Text>
+                      <MapPinIcon size={11} color={subColor} />
                       <Text style={[styles.entryLocation, { color: subColor }]}>{entry.location}</Text>
                     </View>
                   </View>
@@ -376,13 +381,13 @@ export default function AttendanceScreen() {
           style={styles.tabItem}
           onPress={() => { setActiveTab('Home'); navigation.navigate('Home'); }}
         >
-          <Text style={styles.tabIcon}>🏠</Text>
+          <HomeIcon size={20} color={activeTab === 'Home' ? PURPLE : subColor} />
           <Text style={[styles.tabLabel, { color: subColor }, activeTab === 'Home' && styles.tabLabelActive]}>Home</Text>
           {activeTab === 'Home' && <View style={styles.tabIndicator} />}
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.tabItem} onPress={() => setActiveTab('Attendance')}>
-          <Text style={styles.tabIcon}>🕐</Text>
+          <ClockIcon size={20} color={activeTab === 'Attendance' ? PURPLE : subColor} />
           <Text style={[styles.tabLabel, { color: subColor }, activeTab === 'Attendance' && styles.tabLabelActive]}>Attendance</Text>
           {activeTab === 'Attendance' && <View style={styles.tabIndicator} />}
         </TouchableOpacity>
@@ -391,7 +396,7 @@ export default function AttendanceScreen() {
           style={styles.tabItem}
           onPress={() => { setActiveTab('Settings'); navigation.navigate('Settings'); }}
         >
-          <Text style={styles.tabIcon}>⚙️</Text>
+          <SettingsIcon size={20} color={activeTab === 'Settings' ? PURPLE : subColor} />
           <Text style={[styles.tabLabel, { color: subColor }, activeTab === 'Settings' && styles.tabLabelActive]}>Settings</Text>
           {activeTab === 'Settings' && <View style={styles.tabIndicator} />}
         </TouchableOpacity>
@@ -414,11 +419,9 @@ const styles = StyleSheet.create({
   },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   headerBrand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerPin: { fontSize: 16 },
   headerApp:  { color: '#FFFFFF', fontSize: 13, fontWeight: '800', letterSpacing: 1.5 },
   headerRole: { color: 'rgba(255,255,255,0.7)', fontSize: 11 },
   headerThemeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
-  headerThemeIcon: { fontSize: 16 },
   headerTitle: { color: '#FFFFFF', fontSize: 26, fontWeight: '800', marginBottom: 14 },
 
   monthStrip: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },
@@ -440,7 +443,6 @@ const styles = StyleSheet.create({
   statIconBoxGreen: { backgroundColor: '#E8F5E9' },
   statIconBoxOrange: { backgroundColor: '#FFF3E0' },
   statIconBoxRed: { backgroundColor: '#FFEBEE' },
-  statIcon: { fontSize: 18 },
   statNum: { fontSize: 22, fontWeight: '800' },
   statLabel: { fontSize: 11, fontWeight: '500', textAlign: 'center' },
 
@@ -450,7 +452,6 @@ const styles = StyleSheet.create({
   },
 
   searchRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, gap: 8, marginBottom: 12 },
-  searchIcon: { fontSize: 15 },
   searchInput: { flex: 1, fontSize: 13 },
 
   filterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -464,7 +465,7 @@ const styles = StyleSheet.create({
     backgroundColor: GREEN, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8,
     minWidth: 90,
   },
-  exportIcon: { fontSize: 13, color: '#FFFFFF' },
+  exportContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   exportText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   exportBtnDisabled: { opacity: 0.7 },
 
@@ -477,7 +478,6 @@ const styles = StyleSheet.create({
   entryDate: { fontSize: 14, fontWeight: '700' },
   entryTime: { fontSize: 12 },
   entryLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  locationPin: { fontSize: 11 },
   entryLocation: { fontSize: 11 },
   entryRight: { alignItems: 'flex-end', gap: 6 },
   badge: { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
@@ -495,7 +495,6 @@ const styles = StyleSheet.create({
 
   tabBar: { flexDirection: 'row', borderTopWidth: 1, paddingBottom: 8, paddingTop: 10 },
   tabItem: { flex: 1, alignItems: 'center', gap: 3 },
-  tabIcon: { fontSize: 20 },
   tabLabel: { fontSize: 11 },
   tabLabelActive: { color: PURPLE, fontWeight: '700' },
   tabIndicator: { position: 'absolute', bottom: -10, width: 20, height: 3, backgroundColor: PURPLE, borderRadius: 2 },
