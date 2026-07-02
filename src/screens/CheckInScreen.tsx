@@ -45,7 +45,45 @@ const STEPS = [
 
 const PURPLE = '#3D2C8D';
 const GREEN = '#5DBB7A';
+const RED = '#EF4444';
 const DARK_BG = '#1A1A2E';
+
+// ---------------------------------------------------------------------
+// GEOFENCE CONFIG
+// Reference/base location the employee's GPS position is compared
+// against. Replace these coordinates with your actual office location
+// if it changes.
+// ---------------------------------------------------------------------
+const OFFICE_LOCATION = {
+  latitude: 30.196976,
+  longitude: 67.024798,
+  label: 'Main Office',
+};
+const GEOFENCE_RADIUS_METERS = 50;
+
+// Haversine formula: returns distance in meters between two lat/lng points
+function getDistanceMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const R = 6371000; // Earth radius in meters
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 function RadarPulse() {
   const ring1 = useRef(new Animated.Value(0)).current;
@@ -188,6 +226,23 @@ export default function CheckInScreen() {
     fetchUser();
   }, []);
 
+  // Distance from the office / reference location, recalculated whenever
+  // a new GPS fix comes in.
+  const distanceFromOffice = location
+    ? getDistanceMeters(
+        location.latitude,
+        location.longitude,
+        OFFICE_LOCATION.latitude,
+        OFFICE_LOCATION.longitude,
+      )
+    : null;
+
+  const isInsideGeofence =
+    distanceFromOffice !== null && distanceFromOffice <= GEOFENCE_RADIUS_METERS;
+
+  const formatDistance = (meters: number) =>
+    meters < 1000 ? `${Math.round(meters)}m` : `${(meters / 1000).toFixed(2)}km`;
+
   const animateStep = (next: Step) => {
     Animated.sequence([
       Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
@@ -198,6 +253,13 @@ export default function CheckInScreen() {
 
   const requestLocationPermission = async (): Promise<boolean> => {
     if (Platform.OS !== 'android') return true;
+
+    // If already granted, don't prompt again
+    const already = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+    );
+    if (already) return true;
+
     const result = await PermissionsAndroid.request(
       PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
       {
@@ -224,30 +286,59 @@ export default function CheckInScreen() {
     return result === PermissionsAndroid.RESULTS.GRANTED;
   };
 
+  // Helper: promisified getCurrentPosition so we can try high, then low accuracy
+  const getPosition = (enableHighAccuracy: boolean, timeout: number) =>
+    new Promise<LocationData>((resolve, reject) => {
+      Geolocation.getCurrentPosition(
+        pos =>
+          resolve({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: Math.round(pos.coords.accuracy),
+          }),
+        err => reject(err),
+        { enableHighAccuracy, timeout, maximumAge: 10000 },
+      );
+    });
+
   const fetchLocation = async () => {
     setLocationLoading(true);
     setLocationError('');
+
     const ok = await requestLocationPermission();
     if (!ok) {
-      setLocationError('Location permission denied.');
+      setLocationError('Location permission denied. Enable it in phone Settings → Apps → GeoLock → Permissions → Location.');
       setLocationLoading(false);
       return;
     }
-    Geolocation.getCurrentPosition(
-      pos => {
-        setLocation({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          accuracy: Math.round(pos.coords.accuracy),
-        });
+
+    try {
+      // First try high accuracy (GPS). Works best outdoors.
+      const loc = await getPosition(true, 15000);
+      setLocation(loc);
+      setLocationLoading(false);
+    } catch (highErr: any) {
+      // High accuracy failed (often indoors / weak GPS). Fall back to
+      // low accuracy (WiFi + network based) which most phones can get quickly.
+      try {
+        const loc = await getPosition(false, 15000);
+        setLocation(loc);
         setLocationLoading(false);
-      },
-      () => {
-        setLocationError('Unable to get location. Tap retry.');
+      } catch (lowErr: any) {
+        const code = lowErr?.code ?? highErr?.code;
+        // code 1 = permission, 2 = position unavailable, 3 = timeout
+        let msg = 'Unable to get location. Tap retry.';
+        if (code === 1) {
+          msg = 'Location permission is off. Enable it for GeoLock in phone Settings.';
+        } else if (code === 2) {
+          msg = 'Location is turned off on this phone. Turn on Location/GPS and retry.';
+        } else if (code === 3) {
+          msg = 'GPS is taking too long. Move near a window or outdoors and tap retry.';
+        }
+        setLocationError(msg);
         setLocationLoading(false);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
-    );
+      }
+    }
   };
 
   const handleCapture = async () => {
@@ -283,6 +374,11 @@ export default function CheckInScreen() {
       return;
     }
 
+    // Determine present/absent based on distance from the reference
+    // (office) location before submitting.
+    const computedStatus: 'present' | 'absent' = isInsideGeofence ? 'present' : 'absent';
+    setCheckInStatus(computedStatus);
+
     setSubmitting(true);
 
     let address: string | undefined;
@@ -309,7 +405,9 @@ export default function CheckInScreen() {
     setSubmitting(false);
 
     if (result.success) {
-      if (result.status) setCheckInStatus(result.status);
+      // Prefer server-computed status if provided, otherwise fall back
+      // to the geofence-based status computed on-device.
+      setCheckInStatus(result.status ?? computedStatus);
       animateStep(5);
     } else {
       Alert.alert('Check-In Failed', result.error || 'Please try again.');
@@ -370,35 +468,46 @@ export default function CheckInScreen() {
             <View>
               <Text style={styles.verifyCardTitle}>GPS Verification</Text>
               <Text style={styles.verifyCardSub}>
-                Main Office, <Text style={{ color: GREEN }}>123 Market Street, SF</Text>
+                {OFFICE_LOCATION.label}, <Text style={{ color: GREEN }}>
+                  {OFFICE_LOCATION.latitude.toFixed(6)}, {OFFICE_LOCATION.longitude.toFixed(6)}
+                </Text>
               </Text>
             </View>
           </View>
           {!locationLoading && !locationError && (
-            <View style={styles.verifiedBadge}>
+            <View style={[styles.verifiedBadge, !isInsideGeofence && styles.verifiedBadgeOutside]}>
               <View style={styles.verifiedContent}>
-                <Text style={styles.verifiedText}>Verified </Text>
-                <CheckIcon size={10} color={GREEN} />
+                <Text style={[styles.verifiedText, !isInsideGeofence && styles.verifiedTextOutside]}>
+                  {isInsideGeofence ? 'Verified ' : 'Out of Range '}
+                </Text>
+                {isInsideGeofence
+                  ? <CheckIcon size={10} color={GREEN} />
+                  : <CrossIcon size={10} color={RED} />
+                }
               </View>
             </View>
           )}
         </View>
         <View style={styles.infoBoxRow}>
           <View style={styles.infoBox}>
-            <Text style={styles.infoBoxValue}>Main Office</Text>
+            <Text style={styles.infoBoxValue}>{OFFICE_LOCATION.label}</Text>
             <Text style={styles.infoBoxLabel}>Location</Text>
           </View>
           <View style={styles.infoBox}>
             {locationLoading ? (
               <ActivityIndicator size="small" color={GREEN} />
             ) : (
-              <Text style={styles.infoBoxValue}>{locationError ? 'Outside' : 'Inside Zone'}</Text>
+              <Text style={[styles.infoBoxValue, !isInsideGeofence && !locationError && { color: RED }]}>
+                {locationError ? '—' : isInsideGeofence ? 'Inside Zone' : 'Outside Zone'}
+              </Text>
             )}
             <Text style={styles.infoBoxLabel}>Geofence</Text>
           </View>
           <View style={styles.infoBox}>
-            <Text style={styles.infoBoxValue}>Corp-WiFi-HQ</Text>
-            <Text style={styles.infoBoxLabel}>Network</Text>
+            <Text style={styles.infoBoxValue}>
+              {distanceFromOffice !== null ? formatDistance(distanceFromOffice) : '—'}
+            </Text>
+            <Text style={styles.infoBoxLabel}>Distance</Text>
           </View>
         </View>
       </View>
@@ -417,9 +526,25 @@ export default function CheckInScreen() {
         </View>
       ) : (
         <View style={styles.checkRows}>
-          <VerifyRow icon={<GlobeIcon size={16} color="#D0F0DC" />} text="Within approved geofence radius (150m)" />
+          <VerifyRow
+            icon={<GlobeIcon size={16} color={isInsideGeofence ? '#D0F0DC' : '#FFD0D0'} />}
+            text={
+              isInsideGeofence
+                ? `Within approved geofence radius (${GEOFENCE_RADIUS_METERS}m)`
+                : `Outside approved geofence radius (${GEOFENCE_RADIUS_METERS}m) — ${formatDistance(distanceFromOffice ?? 0)} away`
+            }
+          />
           <VerifyRow icon={<SignalIcon size={16} color="#D0F0DC" />} text="Corporate network detected" />
           <VerifyRow icon={<SmartphoneIcon size={16} color="#D0F0DC" />} text="Device identity verified" />
+        </View>
+      )}
+
+      {!locationLoading && !locationError && !isInsideGeofence && (
+        <View style={styles.warnBox}>
+          <WarningIcon size={16} color="#F59E0B" />
+          <Text style={styles.warnText}>
+            You're {formatDistance(distanceFromOffice ?? 0)} from {OFFICE_LOCATION.label}. You can still check in, but attendance will be marked Absent since you're outside the {GEOFENCE_RADIUS_METERS}m radius.
+          </Text>
         </View>
       )}
 
@@ -487,8 +612,12 @@ export default function CheckInScreen() {
         <View style={styles.previewRow}>
           <MapPinIcon size={18} color="#E53935" />
           <View>
-            <Text style={styles.previewLabel}>Main Office, Islamabad</Text>
-            <Text style={styles.previewSub}>123 Market Street</Text>
+            <Text style={styles.previewLabel}>{OFFICE_LOCATION.label}</Text>
+            <Text style={styles.previewSub}>
+              {distanceFromOffice !== null
+                ? `${formatDistance(distanceFromOffice)} away — ${isInsideGeofence ? 'Inside Zone' : 'Outside Zone'}`
+                : '—'}
+            </Text>
           </View>
         </View>
         {location && (
@@ -543,15 +672,27 @@ export default function CheckInScreen() {
         <View style={styles.divider} />
         <View style={styles.confirmRow}>
           <Text style={styles.confirmLabel}>Location</Text>
-          <Text style={styles.confirmValue}>Main Office, SF</Text>
+          <Text style={styles.confirmValue}>{OFFICE_LOCATION.label}</Text>
         </View>
         <View style={styles.divider} />
         <View style={styles.confirmRow}>
           <Text style={styles.confirmLabel}>Geofence</Text>
           <View style={styles.confirmValueRow}>
-            <Text style={[styles.confirmValue, { color: GREEN }]}>Inside Zone </Text>
-            <CheckIcon size={10} color={GREEN} />
+            <Text style={[styles.confirmValue, { color: isInsideGeofence ? GREEN : RED }]}>
+              {isInsideGeofence ? 'Inside Zone ' : 'Outside Zone '}
+            </Text>
+            {isInsideGeofence
+              ? <CheckIcon size={10} color={GREEN} />
+              : <CrossIcon size={10} color={RED} />
+            }
           </View>
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.confirmRow}>
+          <Text style={styles.confirmLabel}>Distance</Text>
+          <Text style={styles.confirmValue}>
+            {distanceFromOffice !== null ? formatDistance(distanceFromOffice) : '—'}
+          </Text>
         </View>
         <View style={styles.divider} />
         <View style={styles.confirmRow}>
@@ -563,10 +704,8 @@ export default function CheckInScreen() {
         <View style={styles.divider} />
         <View style={styles.confirmRow}>
           <Text style={styles.confirmLabel}>Status</Text>
-          <Text style={[styles.confirmValue, {
-            color: (() => { const h = new Date().getHours(); return h >= 8 && h < 9 ? GREEN : h >= 9 && h < 10 ? '#F59E0B' : '#EF4444'; })(),
-          }]}>
-            {(() => { const h = new Date().getHours(); return h >= 8 && h < 9 ? 'Present' : h >= 9 && h < 10 ? 'Late' : 'Absent'; })()}
+          <Text style={[styles.confirmValue, { color: isInsideGeofence ? GREEN : RED }]}>
+            {isInsideGeofence ? 'Present' : 'Absent'}
           </Text>
         </View>
         <View style={styles.divider} />
@@ -586,6 +725,15 @@ export default function CheckInScreen() {
           </>
         )}
       </View>
+
+      {!isInsideGeofence && (
+        <View style={styles.warnBox}>
+          <WarningIcon size={16} color="#F59E0B" />
+          <Text style={styles.warnText}>
+            You're outside the {GEOFENCE_RADIUS_METERS}m radius of {OFFICE_LOCATION.label}. Confirming will mark you Absent.
+          </Text>
+        </View>
+      )}
 
       <Text style={styles.sectionHeading}>Notes (Optional)</Text>
       <View style={styles.notesCard}>
@@ -640,7 +788,13 @@ export default function CheckInScreen() {
       <View style={styles.doneSummary}>
         <View style={styles.doneSummaryRow}>
           <Text style={styles.doneSummaryLabel}>Location</Text>
-          <Text style={styles.doneSummaryValue}>Main Office, SF</Text>
+          <Text style={styles.doneSummaryValue}>{OFFICE_LOCATION.label}</Text>
+        </View>
+        <View style={styles.doneSummaryRow}>
+          <Text style={styles.doneSummaryLabel}>Distance</Text>
+          <Text style={styles.doneSummaryValue}>
+            {distanceFromOffice !== null ? formatDistance(distanceFromOffice) : '—'}
+          </Text>
         </View>
         <View style={styles.doneSummaryRow}>
           <Text style={styles.doneSummaryLabel}>Time</Text>
@@ -652,7 +806,7 @@ export default function CheckInScreen() {
           <Text style={styles.doneSummaryLabel}>Status</Text>
           <View style={styles.doneSummaryValueRow}>
             <Text style={[styles.doneSummaryValue, {
-              color: checkInStatus === 'present' ? GREEN : checkInStatus === 'late' ? '#F59E0B' : '#EF4444',
+              color: checkInStatus === 'present' ? GREEN : checkInStatus === 'late' ? '#F59E0B' : RED,
             }]}>
               {checkInStatus === 'present' ? 'Present ' : checkInStatus === 'late' ? 'Late ' : 'Absent '}
             </Text>
@@ -660,15 +814,13 @@ export default function CheckInScreen() {
               ? <CheckIcon size={12} color={GREEN} />
               : checkInStatus === 'late'
                 ? <WarningIcon size={12} color="#F59E0B" />
-                : <CrossIcon size={12} color="#EF4444" />
+                : <CrossIcon size={12} color={RED} />
             }
           </View>
         </View>
         <View style={styles.doneSummaryRow}>
-          <Text style={styles.doneSummaryLabel}>Window</Text>
-          <Text style={styles.doneSummaryValue}>
-            {checkInStatus === 'present' ? '8:00 - 9:00 AM' : checkInStatus === 'late' ? '9:00 - 10:00 AM' : 'Outside hours'}
-          </Text>
+          <Text style={styles.doneSummaryLabel}>Geofence Radius</Text>
+          <Text style={styles.doneSummaryValue}>{GEOFENCE_RADIUS_METERS}m</Text>
         </View>
         <View style={styles.doneSummaryRow}>
           <Text style={styles.doneSummaryLabel}>Saved</Text>
@@ -773,8 +925,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(93,187,122,0.15)', borderRadius: 20,
     paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: GREEN,
   },
+  verifiedBadgeOutside: {
+    backgroundColor: 'rgba(239,68,68,0.15)', borderColor: RED,
+  },
   verifiedContent: { flexDirection: 'row', alignItems: 'center' },
   verifiedText: { color: GREEN, fontSize: 12, fontWeight: '700' },
+  verifiedTextOutside: { color: RED },
 
   infoBoxRow: { flexDirection: 'row', gap: 8 },
   infoBox: {
@@ -791,6 +947,14 @@ const styles = StyleSheet.create({
   retryBtn: { alignSelf: 'flex-start', backgroundColor: 'rgba(93,187,122,0.15)', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
   retryText: { color: GREEN, fontWeight: '700', fontSize: 13 },
   checkRows: { gap: 8 },
+
+  warnBox: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    backgroundColor: 'rgba(245,158,11,0.12)', borderRadius: 10,
+    borderWidth: 1, borderColor: 'rgba(245,158,11,0.35)',
+    paddingHorizontal: 14, paddingVertical: 10,
+  },
+  warnText: { flex: 1, fontSize: 12.5, color: '#FCD9A0', lineHeight: 18 },
 
   continueBtn: {
     backgroundColor: GREEN, borderRadius: 14, paddingVertical: 16,

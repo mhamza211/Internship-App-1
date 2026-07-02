@@ -18,6 +18,9 @@ import {
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
 
+const PURPLE = '#3D2C8D';
+const GREEN  = '#5DBB7A';
+
 function getGreeting(): string {
   const h = new Date().getHours();
   if (h < 12) return 'Good Morning';
@@ -60,32 +63,45 @@ export default function HomeScreen() {
     setLoadingStatus(true);
     try {
       const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const todayDate = now.getDate();
 
       const [alreadyCheckedIn, recent] = await Promise.all([
         hasCheckedInToday(),
-        fetchMyAttendance(40),
+        fetchMyAttendance(60),
       ]);
       setCheckedInToday(alreadyCheckedIn);
       setRecentRecords(recent);
 
-      const thisMonthRecords = recent.filter(r => {
+      // Build the month the SAME way the Attendance screen does, so the
+      // numbers on both screens always match.
+      const monthRecords = recent.filter(r => {
         const d = new Date(r.check_in_time);
-        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        return d.getFullYear() === year && d.getMonth() === month;
       });
 
-      const presentCount = thisMonthRecords.filter(r => r.status === 'present').length;
-      const lateCount = thisMonthRecords.filter(r => r.status === 'late').length;
+      const recordsByDay = new Map<number, AttendanceRecord>();
+      monthRecords.forEach(r => {
+        const day = new Date(r.check_in_time).getDate();
+        if (!recordsByDay.has(day)) recordsByDay.set(day, r);
+      });
 
-      const recordedDates = new Set(
-        thisMonthRecords.map(r => new Date(r.check_in_time).toDateString())
-      );
-
+      let presentCount = 0;
+      let lateCount = 0;
       let absentCount = 0;
-      for (let day = 1; day < now.getDate(); day++) {
-        const d = new Date(now.getFullYear(), now.getMonth(), day);
+
+      for (let day = todayDate; day >= 1; day--) {
+        const d = new Date(year, month, day);
         const dow = d.getDay();
         const isWorkday = dow !== 0 && dow !== 6;
-        if (isWorkday && !recordedDates.has(d.toDateString())) {
+        const record = recordsByDay.get(day);
+
+        if (record) {
+          if (record.status === 'present') presentCount++;
+          else if (record.status === 'late') lateCount++;
+          else if (record.status === 'absent') absentCount++;
+        } else if (isWorkday && day < todayDate) {
           absentCount++;
         }
       }
@@ -288,9 +304,6 @@ export default function HomeScreen() {
     </SafeAreaView>
   );
 }
-
-const PURPLE = '#3D2C8D';
-const GREEN  = '#5DBB7A';
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F5F5F8' },
