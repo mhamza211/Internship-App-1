@@ -12,6 +12,8 @@ import CheckInScreen from './src/screens/CheckInScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AttendanceScreen from './src/screens/AttendanceScreen';
 import type { RootStackParamList } from './src/types/navigation';
+import OrgSetupScreen from './src/screens/OrgSetupScreen';  
+
 import { supabase } from './src/lib/supabase';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -80,6 +82,8 @@ export default function App() {
         <Stack.Screen name="CheckIn" component={CheckInScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="Attendance" component={AttendanceScreen} />
+        <Stack.Screen name="OrgSetup" component={OrgSetupScreen} />
+
       </Stack.Navigator>
     </NavigationContainer>
   );

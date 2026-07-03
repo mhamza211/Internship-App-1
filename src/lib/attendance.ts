@@ -41,7 +41,10 @@ export const uploadAttendancePhoto = async (photoUri: string, userId: string): P
 };
 
 // ─────────────────────────────────────────
-// Save attendance check-in record
+// Save attendance check-in record.
+// org_id and status (present/absent, computed from the geofence
+// check on the CheckIn screen) are now supplied by the caller
+// instead of being recalculated here from the clock.
 // ─────────────────────────────────────────
 export const saveAttendance = async (checkInData: CheckInData): Promise<{ success: boolean; error?: string; status?: 'present' | 'late' | 'absent' }> => {
   try {
@@ -52,29 +55,23 @@ export const saveAttendance = async (checkInData: CheckInData): Promise<{ succes
       return { success: false, error: 'User not logged in' };
     }
 
+    if (!checkInData.orgId) {
+      return { success: false, error: 'No organization found for this user. Please complete organization setup first.' };
+    }
+
     // Upload photo first
     const photoUrl = await uploadAttendancePhoto(checkInData.photoUri, user.id);
-
-    const now = new Date();
-    const hour = now.getHours();
-    let status: 'present' | 'late' | 'absent';
-    if (hour >= 8 && hour < 9) {
-      status = 'present';
-    } else if (hour >= 9 && hour < 10) {
-      status = 'late';
-    } else {
-      status = 'absent';
-    }
 
     // Insert attendance record into Supabase
     const { error } = await supabase.from('attendance').insert({
       user_id: user.id,
+      org_id: checkInData.orgId,
       latitude: checkInData.latitude,
       longitude: checkInData.longitude,
       photo_url: photoUrl,
       address: checkInData.address || null,
-      status: status,
-      check_in_time: now.toISOString(),
+      status: checkInData.status,
+      check_in_time: new Date().toISOString(),
     });
 
     if (error) {
@@ -82,7 +79,7 @@ export const saveAttendance = async (checkInData: CheckInData): Promise<{ succes
       return { success: false, error: error.message };
     }
 
-    return { success: true, status };
+    return { success: true, status: checkInData.status };
   } catch (error) {
     console.error('Attendance save failed:', error);
     return { success: false, error: 'Something went wrong' };

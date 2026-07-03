@@ -8,7 +8,9 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { hasCheckedInToday, fetchMyAttendance } from '../lib/attendance';
+import { getMyProfile, getMyOrganization } from '../lib/organization';
 import { AttendanceRecord } from '../types/attendance';
+import { Organization } from '../types/organization';
 import { supabase } from '../lib/supabase';
 import {
   UserIcon, ClockIcon, CheckCircleIcon, WarningIcon,
@@ -38,6 +40,12 @@ export default function HomeScreen() {
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [monthStats, setMonthStats] = useState({ present: 0, absent: 0, leave: 0 });
 
+  // Multi-tenant: which org this user belongs to. If they don't
+  // belong to one yet, they're bounced to OrgSetup before they can
+  // use the rest of the app.
+  const [organization, setOrganization] = useState<Organization | null>(null);
+  const [checkingOrg, setCheckingOrg] = useState(true);
+
   useEffect(() => {
     const fetchUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -47,6 +55,21 @@ export default function HomeScreen() {
     };
     fetchUser();
   }, []);
+
+  useEffect(() => {
+    const checkOrg = async () => {
+      setCheckingOrg(true);
+      const profile = await getMyProfile();
+      if (!profile || !profile.org_id) {
+        navigation.replace('OrgSetup');
+        return;
+      }
+      const org = await getMyOrganization();
+      setOrganization(org);
+      setCheckingOrg(false);
+    };
+    checkOrg();
+  }, [navigation]);
 
   useEffect(() => {
     loadAttendanceData();
@@ -157,6 +180,16 @@ export default function HomeScreen() {
     );
   };
 
+  // Still resolving which org this user is in (and possibly about to
+  // redirect to OrgSetup) — avoid flashing stale Home content.
+  if (checkingOrg) {
+    return (
+      <SafeAreaView style={[styles.safeArea, styles.centerFill]}>
+        <ActivityIndicator color={PURPLE} size="large" />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor="#3D2C8D" />
@@ -166,6 +199,9 @@ export default function HomeScreen() {
           <View>
             <Text style={styles.greeting}>{getGreeting()}</Text>
             <Text style={styles.userName}>{userName}</Text>
+            {organization && (
+              <Text style={styles.orgBadge}>{organization.name}</Text>
+            )}
           </View>
           <View style={styles.avatarCircle}>
             <UserIcon size={20} color="#FFFFFF" />
@@ -217,11 +253,15 @@ export default function HomeScreen() {
               <Text style={styles.cardTitle}>Location Status</Text>
             </View>
             <View style={styles.verifiedBadge}>
-              <Text style={styles.verifiedText}>Verified</Text>
+              <Text style={styles.verifiedText}>{organization ? 'Verified' : '—'}</Text>
             </View>
           </View>
-          <Text style={styles.locationName}>Main Office, Islamabad</Text>
-          <Text style={styles.locationAddress}>123 Market Street</Text>
+          <Text style={styles.locationName}>{organization?.name ?? 'No organization'}</Text>
+          <Text style={styles.locationAddress}>
+            {organization
+              ? `${organization.office_latitude.toFixed(6)}, ${organization.office_longitude.toFixed(6)} · ${organization.geofence_radius_meters}m radius`
+              : 'Set up your organization to enable check-in'}
+          </Text>
         </View>
 
         <View style={styles.card}>
@@ -307,6 +347,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F5F5F8' },
+  centerFill: { alignItems: 'center', justifyContent: 'center' },
 
   header: {
     backgroundColor: PURPLE,
@@ -328,6 +369,7 @@ const styles = StyleSheet.create({
   },
   greeting: { color: '#C8C0F0', fontSize: 14 },
   userName: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', marginTop: 2 },
+  orgBadge: { color: '#A8F0C0', fontSize: 12, fontWeight: '600', marginTop: 4 },
   avatarCircle: {
     width: 42, height: 42, borderRadius: 21,
     backgroundColor: 'rgba(255,255,255,0.2)',

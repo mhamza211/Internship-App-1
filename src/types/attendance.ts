@@ -3,6 +3,7 @@
 export interface AttendanceRecord {
   id: string;
   user_id: string;
+  org_id: string | null;
   check_in_time: string;
   latitude: number | null;
   longitude: number | null;
@@ -17,4 +18,6 @@ export interface CheckInData {
   longitude: number;
   photoUri: string;
   address?: string;
+  orgId: string;
+  status: 'present' | 'late' | 'absent';
 }

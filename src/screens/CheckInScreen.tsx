@@ -16,10 +16,14 @@ import {
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../types/navigation';
 import Geolocation from '@react-native-community/geolocation';
 import { launchCamera } from 'react-native-image-picker';
 import { saveAttendance } from '../lib/attendance';
+import { getMyOrganization } from '../lib/organization';
 import { CheckInData } from '../types/attendance';
+import { Organization } from '../types/organization';
 import { supabase } from '../lib/supabase';
 import {
   MapPinIcon, CameraIcon, GlobeIcon, SignalIcon, SmartphoneIcon,
@@ -28,6 +32,7 @@ import {
 } from '../components/Icons';
 
 type Step = 1 | 2 | 3 | 4 | 5;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'CheckIn'>;
 
 type LocationData = {
   latitude: number;
@@ -48,18 +53,10 @@ const GREEN = '#5DBB7A';
 const RED = '#EF4444';
 const DARK_BG = '#1A1A2E';
 
-// ---------------------------------------------------------------------
-// GEOFENCE CONFIG
-// Reference/base location the employee's GPS position is compared
-// against. Replace these coordinates with your actual office location
-// if it changes.
-// ---------------------------------------------------------------------
-const OFFICE_LOCATION = {
-  latitude: 30.196976,
-  longitude: 67.024798,
-  label: 'Main Office',
-};
-const GEOFENCE_RADIUS_METERS = 50;
+// Fallback radius used only if, for some reason, the org record
+// doesn't have one set. The real radius always comes from the
+// organization the logged-in user belongs to (multi-tenant).
+const DEFAULT_GEOFENCE_RADIUS_METERS = 50;
 
 // Haversine formula: returns distance in meters between two lat/lng points
 function getDistanceMeters(
@@ -203,7 +200,7 @@ const verifyStyles = StyleSheet.create({
 });
 
 export default function CheckInScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp>();
   const [step, setStep] = useState<Step>(1);
   const [location, setLocation] = useState<LocationData | null>(null);
   const [locationLoading, setLocationLoading] = useState(true);
@@ -215,8 +212,15 @@ export default function CheckInScreen() {
   const [userName, setUserName] = useState('');
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
+  // Multi-tenant: the office location + geofence radius come from
+  // the org the logged-in user belongs to, not a hardcoded constant.
+  const [organization, setOrganization] = useState<Organization | null>(null);
+  const [orgLoading, setOrgLoading] = useState(true);
+  const [orgError, setOrgError] = useState('');
+
   useEffect(() => {
     fetchLocation();
+    fetchOrganization();
     const fetchUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -226,19 +230,33 @@ export default function CheckInScreen() {
     fetchUser();
   }, []);
 
+  const fetchOrganization = async () => {
+    setOrgLoading(true);
+    setOrgError('');
+    const org = await getMyOrganization();
+    if (!org) {
+      setOrgError('No organization found for your account. Please complete organization setup first.');
+    } else {
+      setOrganization(org);
+    }
+    setOrgLoading(false);
+  };
+
   // Distance from the office / reference location, recalculated whenever
-  // a new GPS fix comes in.
-  const distanceFromOffice = location
+  // a new GPS fix comes in or the org loads.
+  const distanceFromOffice = location && organization
     ? getDistanceMeters(
         location.latitude,
         location.longitude,
-        OFFICE_LOCATION.latitude,
-        OFFICE_LOCATION.longitude,
+        organization.office_latitude,
+        organization.office_longitude,
       )
     : null;
 
+  const geofenceRadius = organization?.geofence_radius_meters ?? DEFAULT_GEOFENCE_RADIUS_METERS;
+
   const isInsideGeofence =
-    distanceFromOffice !== null && distanceFromOffice <= GEOFENCE_RADIUS_METERS;
+    distanceFromOffice !== null && distanceFromOffice <= geofenceRadius;
 
   const formatDistance = (meters: number) =>
     meters < 1000 ? `${Math.round(meters)}m` : `${(meters / 1000).toFixed(2)}km`;
@@ -373,9 +391,13 @@ export default function CheckInScreen() {
       Alert.alert('Error', 'Missing GPS or photo data. Please start again.');
       return;
     }
+    if (!organization) {
+      Alert.alert('Error', 'No organization found for your account. Please complete organization setup first.');
+      return;
+    }
 
-    // Determine present/absent based on distance from the reference
-    // (office) location before submitting.
+    // Determine present/absent based on distance from the org's
+    // office location before submitting.
     const computedStatus: 'present' | 'absent' = isInsideGeofence ? 'present' : 'absent';
     setCheckInStatus(computedStatus);
 
@@ -398,6 +420,8 @@ export default function CheckInScreen() {
       longitude: location.longitude,
       photoUri,
       address,
+      orgId: organization.id,
+      status: computedStatus,
     };
 
     const result = await saveAttendance(checkInData);
@@ -438,126 +462,154 @@ export default function CheckInScreen() {
     </View>
   );
 
-  const renderGPS = () => (
-    <ScrollView style={styles.darkScroll} contentContainerStyle={styles.darkScrollContent} showsVerticalScrollIndicator={false}>
-      <View style={styles.mapBox}>
-        <View style={styles.mapGrid}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <View key={i} style={styles.mapGridLine} />
-          ))}
-        </View>
-        <RadarPulse />
-        {location ? (
-          <View style={styles.coordsOverlay}>
-            <Text style={styles.coordsText}>
-              {formatCoord(location.latitude, 'N', 'S')}  {formatCoord(location.longitude, 'E', 'W')}
-            </Text>
-          </View>
-        ) : null}
-        <View style={styles.gpsLockBadge}>
-          <Text style={styles.gpsLockText}>{locationLoading ? 'Acquiring...' : locationError ? 'No Lock' : 'GPS Lock'}</Text>
-        </View>
-      </View>
-
-      <View style={styles.verifyCard}>
-        <View style={styles.verifyCardTop}>
-          <View style={styles.verifyCardLeft}>
-            <View style={styles.navIconBox}>
-              <NavigationIcon size={16} color={GREEN} />
-            </View>
-            <View>
-              <Text style={styles.verifyCardTitle}>GPS Verification</Text>
-              <Text style={styles.verifyCardSub}>
-                {OFFICE_LOCATION.label}, <Text style={{ color: GREEN }}>
-                  {OFFICE_LOCATION.latitude.toFixed(6)}, {OFFICE_LOCATION.longitude.toFixed(6)}
-                </Text>
-              </Text>
-            </View>
-          </View>
-          {!locationLoading && !locationError && (
-            <View style={[styles.verifiedBadge, !isInsideGeofence && styles.verifiedBadgeOutside]}>
-              <View style={styles.verifiedContent}>
-                <Text style={[styles.verifiedText, !isInsideGeofence && styles.verifiedTextOutside]}>
-                  {isInsideGeofence ? 'Verified ' : 'Out of Range '}
-                </Text>
-                {isInsideGeofence
-                  ? <CheckIcon size={10} color={GREEN} />
-                  : <CrossIcon size={10} color={RED} />
-                }
-              </View>
-            </View>
-          )}
-        </View>
-        <View style={styles.infoBoxRow}>
-          <View style={styles.infoBox}>
-            <Text style={styles.infoBoxValue}>{OFFICE_LOCATION.label}</Text>
-            <Text style={styles.infoBoxLabel}>Location</Text>
-          </View>
-          <View style={styles.infoBox}>
-            {locationLoading ? (
-              <ActivityIndicator size="small" color={GREEN} />
-            ) : (
-              <Text style={[styles.infoBoxValue, !isInsideGeofence && !locationError && { color: RED }]}>
-                {locationError ? '—' : isInsideGeofence ? 'Inside Zone' : 'Outside Zone'}
-              </Text>
-            )}
-            <Text style={styles.infoBoxLabel}>Geofence</Text>
-          </View>
-          <View style={styles.infoBox}>
-            <Text style={styles.infoBoxValue}>
-              {distanceFromOffice !== null ? formatDistance(distanceFromOffice) : '—'}
-            </Text>
-            <Text style={styles.infoBoxLabel}>Distance</Text>
-          </View>
-        </View>
-      </View>
-
-      {locationLoading ? (
-        <View style={styles.loadingRow}>
-          <ActivityIndicator color={GREEN} />
-          <Text style={styles.loadingText}>Detecting your location...</Text>
-        </View>
-      ) : locationError ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorText}>{locationError}</Text>
-          <TouchableOpacity onPress={fetchLocation} style={styles.retryBtn}>
-            <Text style={styles.retryText}>Retry</Text>
+  const renderGPS = () => {
+    // No org yet — nothing to check in against. Send them to set one up.
+    if (!orgLoading && orgError) {
+      return (
+        <View style={styles.orgErrorContainer}>
+          <WarningIcon size={40} color="#F59E0B" />
+          <Text style={styles.orgErrorTitle}>No Organization Found</Text>
+          <Text style={styles.orgErrorText}>{orgError}</Text>
+          <TouchableOpacity
+            style={styles.orgErrorBtn}
+            onPress={() => navigation.navigate('OrgSetup')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.continueBtnText}>Go to Organization Setup</Text>
           </TouchableOpacity>
         </View>
-      ) : (
-        <View style={styles.checkRows}>
-          <VerifyRow
-            icon={<GlobeIcon size={16} color={isInsideGeofence ? '#D0F0DC' : '#FFD0D0'} />}
-            text={
-              isInsideGeofence
-                ? `Within approved geofence radius (${GEOFENCE_RADIUS_METERS}m)`
-                : `Outside approved geofence radius (${GEOFENCE_RADIUS_METERS}m) — ${formatDistance(distanceFromOffice ?? 0)} away`
-            }
-          />
-          <VerifyRow icon={<SignalIcon size={16} color="#D0F0DC" />} text="Corporate network detected" />
-          <VerifyRow icon={<SmartphoneIcon size={16} color="#D0F0DC" />} text="Device identity verified" />
-        </View>
-      )}
+      );
+    }
 
-      {!locationLoading && !locationError && !isInsideGeofence && (
-        <View style={styles.warnBox}>
-          <WarningIcon size={16} color="#F59E0B" />
-          <Text style={styles.warnText}>
-            You're {formatDistance(distanceFromOffice ?? 0)} from {OFFICE_LOCATION.label}. You can still check in, but attendance will be marked Absent since you're outside the {GEOFENCE_RADIUS_METERS}m radius.
-          </Text>
+    return (
+      <ScrollView style={styles.darkScroll} contentContainerStyle={styles.darkScrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.mapBox}>
+          <View style={styles.mapGrid}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <View key={i} style={styles.mapGridLine} />
+            ))}
+          </View>
+          <RadarPulse />
+          {location ? (
+            <View style={styles.coordsOverlay}>
+              <Text style={styles.coordsText}>
+                {formatCoord(location.latitude, 'N', 'S')}  {formatCoord(location.longitude, 'E', 'W')}
+              </Text>
+            </View>
+          ) : null}
+          <View style={styles.gpsLockBadge}>
+            <Text style={styles.gpsLockText}>{locationLoading ? 'Acquiring...' : locationError ? 'No Lock' : 'GPS Lock'}</Text>
+          </View>
         </View>
-      )}
 
-      <TouchableOpacity
-        style={[styles.continueBtn, (locationLoading || !!locationError) && styles.continueBtnDisabled]}
-        disabled={locationLoading || !!locationError}
-        onPress={() => animateStep(2)}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.continueBtnText}>Continue to Camera</Text>
-      </TouchableOpacity>
-    </ScrollView>
-  );
+        <View style={styles.verifyCard}>
+          <View style={styles.verifyCardTop}>
+            <View style={styles.verifyCardLeft}>
+              <View style={styles.navIconBox}>
+                <NavigationIcon size={16} color={GREEN} />
+              </View>
+              <View>
+                <Text style={styles.verifyCardTitle}>GPS Verification</Text>
+                <Text style={styles.verifyCardSub}>
+                  {orgLoading
+                    ? 'Loading organization...'
+                    : (
+                      <>
+                        {organization?.name}, <Text style={{ color: GREEN }}>
+                          {organization?.office_latitude.toFixed(6)}, {organization?.office_longitude.toFixed(6)}
+                        </Text>
+                      </>
+                    )}
+                </Text>
+              </View>
+            </View>
+            {!locationLoading && !locationError && !orgLoading && organization && (
+              <View style={[styles.verifiedBadge, !isInsideGeofence && styles.verifiedBadgeOutside]}>
+                <View style={styles.verifiedContent}>
+                  <Text style={[styles.verifiedText, !isInsideGeofence && styles.verifiedTextOutside]}>
+                    {isInsideGeofence ? 'Verified ' : 'Out of Range '}
+                  </Text>
+                  {isInsideGeofence
+                    ? <CheckIcon size={10} color={GREEN} />
+                    : <CrossIcon size={10} color={RED} />
+                  }
+                </View>
+              </View>
+            )}
+          </View>
+          <View style={styles.infoBoxRow}>
+            <View style={styles.infoBox}>
+              <Text style={styles.infoBoxValue} numberOfLines={1}>{organization?.name ?? '—'}</Text>
+              <Text style={styles.infoBoxLabel}>Location</Text>
+            </View>
+            <View style={styles.infoBox}>
+              {locationLoading || orgLoading ? (
+                <ActivityIndicator size="small" color={GREEN} />
+              ) : (
+                <Text style={[styles.infoBoxValue, !isInsideGeofence && !locationError && { color: RED }]}>
+                  {locationError ? '—' : isInsideGeofence ? 'Inside Zone' : 'Outside Zone'}
+                </Text>
+              )}
+              <Text style={styles.infoBoxLabel}>Geofence</Text>
+            </View>
+            <View style={styles.infoBox}>
+              <Text style={styles.infoBoxValue}>
+                {distanceFromOffice !== null ? formatDistance(distanceFromOffice) : '—'}
+              </Text>
+              <Text style={styles.infoBoxLabel}>Distance</Text>
+            </View>
+          </View>
+        </View>
+
+        {locationLoading || orgLoading ? (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color={GREEN} />
+            <Text style={styles.loadingText}>
+              {locationLoading ? 'Detecting your location...' : 'Loading organization...'}
+            </Text>
+          </View>
+        ) : locationError ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{locationError}</Text>
+            <TouchableOpacity onPress={fetchLocation} style={styles.retryBtn}>
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.checkRows}>
+            <VerifyRow
+              icon={<GlobeIcon size={16} color={isInsideGeofence ? '#D0F0DC' : '#FFD0D0'} />}
+              text={
+                isInsideGeofence
+                  ? `Within approved geofence radius (${geofenceRadius}m)`
+                  : `Outside approved geofence radius (${geofenceRadius}m) — ${formatDistance(distanceFromOffice ?? 0)} away`
+              }
+            />
+            <VerifyRow icon={<SignalIcon size={16} color="#D0F0DC" />} text="Corporate network detected" />
+            <VerifyRow icon={<SmartphoneIcon size={16} color="#D0F0DC" />} text="Device identity verified" />
+          </View>
+        )}
+
+        {!locationLoading && !locationError && !orgLoading && organization && !isInsideGeofence && (
+          <View style={styles.warnBox}>
+            <WarningIcon size={16} color="#F59E0B" />
+            <Text style={styles.warnText}>
+              You're {formatDistance(distanceFromOffice ?? 0)} from {organization.name}. You can still check in, but attendance will be marked Absent since you're outside the {geofenceRadius}m radius.
+            </Text>
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={[styles.continueBtn, (locationLoading || !!locationError || orgLoading || !organization) && styles.continueBtnDisabled]}
+          disabled={locationLoading || !!locationError || orgLoading || !organization}
+          onPress={() => animateStep(2)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.continueBtnText}>Continue to Camera</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    );
+  };
 
   const renderCamera = () => (
     <View style={styles.cameraStep}>
@@ -612,7 +664,7 @@ export default function CheckInScreen() {
         <View style={styles.previewRow}>
           <MapPinIcon size={18} color="#E53935" />
           <View>
-            <Text style={styles.previewLabel}>{OFFICE_LOCATION.label}</Text>
+            <Text style={styles.previewLabel}>{organization?.name ?? 'Office'}</Text>
             <Text style={styles.previewSub}>
               {distanceFromOffice !== null
                 ? `${formatDistance(distanceFromOffice)} away — ${isInsideGeofence ? 'Inside Zone' : 'Outside Zone'}`
@@ -672,7 +724,7 @@ export default function CheckInScreen() {
         <View style={styles.divider} />
         <View style={styles.confirmRow}>
           <Text style={styles.confirmLabel}>Location</Text>
-          <Text style={styles.confirmValue}>{OFFICE_LOCATION.label}</Text>
+          <Text style={styles.confirmValue}>{organization?.name ?? '—'}</Text>
         </View>
         <View style={styles.divider} />
         <View style={styles.confirmRow}>
@@ -730,7 +782,7 @@ export default function CheckInScreen() {
         <View style={styles.warnBox}>
           <WarningIcon size={16} color="#F59E0B" />
           <Text style={styles.warnText}>
-            You're outside the {GEOFENCE_RADIUS_METERS}m radius of {OFFICE_LOCATION.label}. Confirming will mark you Absent.
+            You're outside the {geofenceRadius}m radius of {organization?.name}. Confirming will mark you Absent.
           </Text>
         </View>
       )}
@@ -788,7 +840,7 @@ export default function CheckInScreen() {
       <View style={styles.doneSummary}>
         <View style={styles.doneSummaryRow}>
           <Text style={styles.doneSummaryLabel}>Location</Text>
-          <Text style={styles.doneSummaryValue}>{OFFICE_LOCATION.label}</Text>
+          <Text style={styles.doneSummaryValue}>{organization?.name ?? '—'}</Text>
         </View>
         <View style={styles.doneSummaryRow}>
           <Text style={styles.doneSummaryLabel}>Distance</Text>
@@ -820,7 +872,7 @@ export default function CheckInScreen() {
         </View>
         <View style={styles.doneSummaryRow}>
           <Text style={styles.doneSummaryLabel}>Geofence Radius</Text>
-          <Text style={styles.doneSummaryValue}>{GEOFENCE_RADIUS_METERS}m</Text>
+          <Text style={styles.doneSummaryValue}>{geofenceRadius}m</Text>
         </View>
         <View style={styles.doneSummaryRow}>
           <Text style={styles.doneSummaryLabel}>Saved</Text>
@@ -885,6 +937,16 @@ const styles = StyleSheet.create({
   darkScroll: { flex: 1, backgroundColor: DARK_BG },
   darkScrollContent: { padding: 16, gap: 14, paddingBottom: 32 },
 
+  orgErrorContainer: {
+    flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12,
+  },
+  orgErrorTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', marginTop: 4 },
+  orgErrorText: { color: '#8B8FA8', fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  orgErrorBtn: {
+    backgroundColor: GREEN, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 24,
+    marginTop: 12,
+  },
+
   mapBox: {
     backgroundColor: '#0D1117', borderRadius: 16, height: 220,
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
@@ -914,7 +976,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
   },
   verifyCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  verifyCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  verifyCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   navIconBox: {
     width: 38, height: 38, borderRadius: 10,
     backgroundColor: 'rgba(93,187,122,0.15)', alignItems: 'center', justifyContent: 'center',
@@ -935,7 +997,7 @@ const styles = StyleSheet.create({
   infoBoxRow: { flexDirection: 'row', gap: 8 },
   infoBox: {
     flex: 1, backgroundColor: '#252A3D', borderRadius: 10,
-    paddingVertical: 10, alignItems: 'center',
+    paddingVertical: 10, alignItems: 'center', paddingHorizontal: 4,
   },
   infoBoxValue: { color: '#FFFFFF', fontSize: 12, fontWeight: '700', textAlign: 'center' },
   infoBoxLabel: { color: '#6B7280', fontSize: 10, marginTop: 2, textAlign: 'center' },

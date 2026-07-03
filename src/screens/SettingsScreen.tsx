@@ -2,15 +2,18 @@ import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, StatusBar, SafeAreaView, Platform, Alert, Switch,
-  Modal, TextInput, ActivityIndicator, DimensionValue,
+  Modal, TextInput, ActivityIndicator, DimensionValue, Share,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { supabase } from '../lib/supabase';
+import { getMyProfile, getMyOrganization } from '../lib/organization';
+import type { Profile, Organization } from '../types/organization';
 import {
   LockIcon, SunIcon, MoonIcon, UserIcon, GlobeIcon, ShieldIcon,
   LogoutIcon, BellIcon, BellOffIcon, HomeIcon, ClockIcon, SettingsIcon,
+  KeyIcon,
 } from '../components/Icons';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
@@ -30,6 +33,8 @@ export default function SettingsScreen() {
   const [updatingPassword, setUpdatingPassword] = useState(false);
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [organization, setOrganization] = useState<Organization | null>(null);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -37,6 +42,14 @@ export default function SettingsScreen() {
       if (user) {
         setUserEmail(user.email ?? '');
         setUserName(user.user_metadata?.full_name ?? '');
+      }
+
+      const myProfile = await getMyProfile();
+      setProfile(myProfile);
+
+      if (myProfile?.org_id) {
+        const org = await getMyOrganization();
+        setOrganization(org);
       }
     };
     fetchUser();
@@ -48,6 +61,8 @@ export default function SettingsScreen() {
   const textColor = lightMode ? '#1A1A2E'  : '#FFFFFF';
   const subColor  = lightMode ? '#888'     : '#8B8FA8';
   const borderColor = lightMode ? '#EFEFEF' : '#2E3255';
+
+  const roleLabel = profile ? (profile.role === 'admin' ? 'Admin' : 'Employee') : 'N/A';
 
   const handleNotificationToggle = (value: boolean) => {
     setNotifications(value);
@@ -63,6 +78,20 @@ export default function SettingsScreen() {
         'You will no longer receive attendance reminders and alerts.',
         [{ text: 'OK' }]
       );
+    }
+  };
+
+  const handleShareInviteCode = async () => {
+    if (!organization) return;
+    try {
+      await Share.share({
+        message:
+          `Join ${organization.name} on GeoLock!\n\n` +
+          `Invite code: ${organization.invite_code}\n\n` +
+          `Open the GeoLock app → Sign Up → Set Up Workspace → Join Org, then enter this code.`,
+      });
+    } catch {
+      Alert.alert('Error', 'Could not open the share sheet.');
     }
   };
 
@@ -146,7 +175,7 @@ export default function SettingsScreen() {
             <LockIcon size={18} color="#FFFFFF" />
             <View>
               <Text style={styles.headerAppName}>GEOLOCK</Text>
-              <Text style={styles.headerRole}>EMPLOYEE</Text>
+              <Text style={styles.headerRole}>{roleLabel.toUpperCase()}</Text>
             </View>
           </View>
           <TouchableOpacity
@@ -176,9 +205,39 @@ export default function SettingsScreen() {
           </View>
           <View style={[styles.fieldBox, styles.noMarginBottom, { backgroundColor: fieldBg }]}>
             <Text style={styles.fieldLabel}>ROLE</Text>
-            <Text style={[styles.fieldValue, { color: textColor }]}>Employee</Text>
+            <Text style={[styles.fieldValue, { color: textColor }]}>{roleLabel}</Text>
           </View>
         </View>
+
+        {profile?.role === 'admin' && organization && (
+          <View style={[styles.section, { backgroundColor: cardBg }]}>
+            <View style={styles.sectionTitleRow}>
+              <KeyIcon size={16} color="#FFC107" />
+              <Text style={[styles.sectionTitle, { color: textColor }]}>Organization</Text>
+            </View>
+
+            <View style={[styles.fieldBox, { backgroundColor: fieldBg }]}>
+              <Text style={styles.fieldLabel}>ORGANIZATION NAME</Text>
+              <Text style={[styles.fieldValue, { color: textColor }]}>{organization.name}</Text>
+            </View>
+
+            <Text style={[styles.inviteHint, { color: subColor }]}>
+              Share this invite code with employees so they can join {organization.name}.
+            </Text>
+
+            <View style={[styles.inviteCodeBox, { backgroundColor: fieldBg }]}>
+              <Text style={[styles.inviteCodeText, { color: GREEN }]}>{organization.invite_code}</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.shareBtn}
+              onPress={handleShareInviteCode}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.shareBtnText}>Share Invite Code</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={[styles.section, { backgroundColor: cardBg }]}>
           <View style={styles.sectionTitleRow}>
@@ -408,4 +467,10 @@ const styles = StyleSheet.create({
   strengthBarBg: { flex: 1, height: 5, borderRadius: 3, backgroundColor: '#E0E0E0' },
   strengthBarFill: { height: 5, borderRadius: 3 },
   strengthLabel: { fontSize: 11, fontWeight: '700', width: 45 },
+
+  inviteHint: { fontSize: 12, lineHeight: 18, marginBottom: 12 },
+  inviteCodeBox: { borderRadius: 10, paddingVertical: 18, alignItems: 'center', marginBottom: 14 },
+  inviteCodeText: { fontSize: 26, fontWeight: '800', letterSpacing: 6 },
+  shareBtn: { backgroundColor: GREEN, borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
+  shareBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
 });

@@ -336,8 +336,12 @@ export default function AttendanceScreen() {
                       <Text style={[styles.entryTime, { color: subColor }]}>-- : --</Text>
                     )}
                     <View style={styles.entryLocationRow}>
-                      <MapPinIcon size={11} color={subColor} />
-                      <Text style={[styles.entryLocation, { color: subColor }]}>{entry.location}</Text>
+                      <View style={styles.entryLocationIcon}>
+                        <MapPinIcon size={11} color={subColor} />
+                      </View>
+                      <Text style={[styles.entryLocation, { color: subColor }]} numberOfLines={2}>
+                        {entry.location}
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.entryRight}>
@@ -473,13 +477,17 @@ const styles = StyleSheet.create({
   entriesLoader: { marginVertical: 16 },
   noBorderBottom: { borderBottomWidth: 0 },
   entriesList: { gap: 0 },
-  entryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1 },
-  entryLeft: { gap: 3 },
+
+  // ── Entry row: entryLeft now takes flexible width and entryLocation wraps,
+  // so a long address no longer pushes the status badge off-screen. ──
+  entryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 14, borderBottomWidth: 1 },
+  entryLeft: { flex: 1, paddingRight: 12, gap: 3 },
   entryDate: { fontSize: 14, fontWeight: '700' },
   entryTime: { fontSize: 12 },
-  entryLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  entryLocation: { fontSize: 11 },
-  entryRight: { alignItems: 'flex-end', gap: 6 },
+  entryLocationRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 4 },
+  entryLocationIcon: { marginTop: 2 },
+  entryLocation: { flex: 1, fontSize: 11, lineHeight: 15 },
+  entryRight: { alignItems: 'flex-end', gap: 6, flexShrink: 0 },
   badge: { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
   badgeText: { fontSize: 12, fontWeight: '700' },
   entryHours: { fontSize: 12, fontWeight: '500' },
