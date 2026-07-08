@@ -33,6 +33,7 @@ import {
 
 type Step = 1 | 2 | 3 | 4 | 5;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'CheckIn'>;
+type AttendanceStatus = 'present' | 'late' | 'absent';
 
 type LocationData = {
   latitude: number;
@@ -51,12 +52,33 @@ const STEPS = [
 const PURPLE = '#3D2C8D';
 const GREEN = '#5DBB7A';
 const RED = '#EF4444';
+const AMBER = '#F59E0B';
 const DARK_BG = '#1A1A2E';
 
 // Fallback radius used only if, for some reason, the org record
 // doesn't have one set. The real radius always comes from the
 // organization the logged-in user belongs to (multi-tenant).
 const DEFAULT_GEOFENCE_RADIUS_METERS = 50;
+
+// Time window used to decide Present vs Late vs Absent. This ONLY
+// applies when the user is inside the geofence — being outside the
+// geofence is always Absent, no matter what time it is.
+const PRESENT_START_HOUR = 8;   // 8:00 AM
+const LATE_START_HOUR = 9;      // 9:00 AM
+const ABSENT_START_HOUR = 10;   // 10:00 AM — checking in from here on is Absent
+
+// Combines location + time into the final attendance status:
+//   outside geofence          -> Absent, regardless of time
+//   inside geofence, 8-8:59   -> Present
+//   inside geofence, 9-9:59   -> Late
+//   inside geofence, else     -> Absent (too early or too late)
+function computeAttendanceStatus(insideGeofence: boolean, now: Date): AttendanceStatus {
+  if (!insideGeofence) return 'absent';
+  const hour = now.getHours();
+  if (hour >= PRESENT_START_HOUR && hour < LATE_START_HOUR) return 'present';
+  if (hour >= LATE_START_HOUR && hour < ABSENT_START_HOUR) return 'late';
+  return 'absent';
+}
 
 // Haversine formula: returns distance in meters between two lat/lng points
 function getDistanceMeters(
@@ -208,7 +230,7 @@ export default function CheckInScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [checkInStatus, setCheckInStatus] = useState<'present' | 'late' | 'absent'>('present');
+  const [checkInStatus, setCheckInStatus] = useState<AttendanceStatus>('present');
   const [userName, setUserName] = useState('');
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -257,6 +279,11 @@ export default function CheckInScreen() {
 
   const isInsideGeofence =
     distanceFromOffice !== null && distanceFromOffice <= geofenceRadius;
+
+  // Live preview of what status confirming right now would produce —
+  // combines the geofence check above with the current time. Recomputed
+  // on every render, so it stays accurate as time passes on this screen.
+  const previewStatus = computeAttendanceStatus(isInsideGeofence, new Date());
 
   const formatDistance = (meters: number) =>
     meters < 1000 ? `${Math.round(meters)}m` : `${(meters / 1000).toFixed(2)}km`;
@@ -396,9 +423,12 @@ export default function CheckInScreen() {
       return;
     }
 
-    // Determine present/absent based on distance from the org's
-    // office location before submitting.
-    const computedStatus: 'present' | 'absent' = isInsideGeofence ? 'present' : 'absent';
+    // Status depends on BOTH geofence and time-of-day:
+    //   outside geofence         -> Absent, regardless of time
+    //   inside geofence, 8-8:59  -> Present
+    //   inside geofence, 9-9:59  -> Late
+    //   inside geofence, else    -> Absent (too early or too late)
+    const computedStatus = computeAttendanceStatus(isInsideGeofence, new Date());
     setCheckInStatus(computedStatus);
 
     setSubmitting(true);
@@ -430,11 +460,60 @@ export default function CheckInScreen() {
 
     if (result.success) {
       // Prefer server-computed status if provided, otherwise fall back
-      // to the geofence-based status computed on-device.
+      // to the geofence+time status computed on-device.
       setCheckInStatus(result.status ?? computedStatus);
       animateStep(5);
     } else {
       Alert.alert('Check-In Failed', result.error || 'Please try again.');
+    }
+  };
+
+  // Called when the user is outside the geofence on the GPS step.
+  // Skips the camera entirely — no photo is required — and saves
+  // an Absent record directly, then jumps to the Done screen.
+  // (Outside the geofence is always Absent, regardless of time.)
+  const handleMarkAbsent = async () => {
+    if (!location) {
+      Alert.alert('Error', 'Missing GPS data. Please retry your location first.');
+      return;
+    }
+    if (!organization) {
+      Alert.alert('Error', 'No organization found for your account. Please complete organization setup first.');
+      return;
+    }
+
+    setCheckInStatus('absent');
+    setSubmitting(true);
+
+    let address: string | undefined;
+    try {
+      const geoRes = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${location.latitude}&lon=${location.longitude}&format=json`,
+        { headers: { 'User-Agent': 'GeoLockApp/1.0' } }
+      );
+      const geoData = await geoRes.json();
+      if (geoData.display_name) {
+        address = geoData.display_name;
+      }
+    } catch {}
+
+    const checkInData: CheckInData = {
+      latitude: location.latitude,
+      longitude: location.longitude,
+      address,
+      orgId: organization.id,
+      status: 'absent',
+    };
+
+    const result = await saveAttendance(checkInData);
+
+    setSubmitting(false);
+
+    if (result.success) {
+      setCheckInStatus(result.status ?? 'absent');
+      animateStep(5);
+    } else {
+      Alert.alert('Failed', result.error || 'Please try again.');
     }
   };
 
@@ -480,6 +559,11 @@ export default function CheckInScreen() {
         </View>
       );
     }
+
+    // Only true once we have a confirmed location + org and are
+    // definitely outside the geofence (not still loading).
+    const confirmedOutsideGeofence =
+      !locationLoading && !locationError && !orgLoading && !!organization && !isInsideGeofence;
 
     return (
       <ScrollView style={styles.darkScroll} contentContainerStyle={styles.darkScrollContent} showsVerticalScrollIndicator={false}>
@@ -590,23 +674,37 @@ export default function CheckInScreen() {
           </View>
         )}
 
-        {!locationLoading && !locationError && !orgLoading && organization && !isInsideGeofence && (
+        {confirmedOutsideGeofence && (
           <View style={styles.warnBox}>
             <WarningIcon size={16} color="#F59E0B" />
             <Text style={styles.warnText}>
-              You're {formatDistance(distanceFromOffice ?? 0)} from {organization.name}. You can still check in, but attendance will be marked Absent since you're outside the {geofenceRadius}m radius.
+              You're {formatDistance(distanceFromOffice ?? 0)} from {organization?.name}, outside the {geofenceRadius}m geofence. You can't check in with a photo from here — mark yourself absent instead.
             </Text>
           </View>
         )}
 
-        <TouchableOpacity
-          style={[styles.continueBtn, (locationLoading || !!locationError || orgLoading || !organization) && styles.continueBtnDisabled]}
-          disabled={locationLoading || !!locationError || orgLoading || !organization}
-          onPress={() => animateStep(2)}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.continueBtnText}>Continue to Camera</Text>
-        </TouchableOpacity>
+        {confirmedOutsideGeofence ? (
+          <TouchableOpacity
+            style={[styles.absentBtn, submitting && styles.continueBtnDisabled]}
+            onPress={handleMarkAbsent}
+            disabled={submitting}
+            activeOpacity={0.85}
+          >
+            {submitting
+              ? <ActivityIndicator color="#FFF" />
+              : <Text style={styles.continueBtnText}>Mark as Absent</Text>
+            }
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.continueBtn, (locationLoading || !!locationError || orgLoading || !organization) && styles.continueBtnDisabled]}
+            disabled={locationLoading || !!locationError || orgLoading || !organization}
+            onPress={() => animateStep(2)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.continueBtnText}>Continue to Camera</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     );
   };
@@ -756,8 +854,10 @@ export default function CheckInScreen() {
         <View style={styles.divider} />
         <View style={styles.confirmRow}>
           <Text style={styles.confirmLabel}>Status</Text>
-          <Text style={[styles.confirmValue, { color: isInsideGeofence ? GREEN : RED }]}>
-            {isInsideGeofence ? 'Present' : 'Absent'}
+          <Text style={[styles.confirmValue, {
+            color: previewStatus === 'present' ? GREEN : previewStatus === 'late' ? AMBER : RED,
+          }]}>
+            {previewStatus === 'present' ? 'Present' : previewStatus === 'late' ? 'Late' : 'Absent'}
           </Text>
         </View>
         <View style={styles.divider} />
@@ -778,11 +878,15 @@ export default function CheckInScreen() {
         )}
       </View>
 
-      {!isInsideGeofence && (
+      {previewStatus !== 'present' && (
         <View style={styles.warnBox}>
-          <WarningIcon size={16} color="#F59E0B" />
-          <Text style={styles.warnText}>
-            You're outside the {geofenceRadius}m radius of {organization?.name}. Confirming will mark you Absent.
+          <WarningIcon size={16} color="#B45309" />
+          <Text style={styles.warnTextOnLight}>
+            {!isInsideGeofence
+              ? `You're outside the ${geofenceRadius}m radius of ${organization?.name}. Confirming will mark you Absent.`
+              : previewStatus === 'late'
+                ? 'The Present window (8:00–8:59 AM) has passed. Confirming now will mark you Late.'
+                : `The check-in window (8:00–9:59 AM) is closed for today. Confirming now will mark you Absent, even though you're at ${organization?.name}.`}
           </Text>
         </View>
       )}
@@ -858,14 +962,14 @@ export default function CheckInScreen() {
           <Text style={styles.doneSummaryLabel}>Status</Text>
           <View style={styles.doneSummaryValueRow}>
             <Text style={[styles.doneSummaryValue, {
-              color: checkInStatus === 'present' ? GREEN : checkInStatus === 'late' ? '#F59E0B' : RED,
+              color: checkInStatus === 'present' ? GREEN : checkInStatus === 'late' ? AMBER : RED,
             }]}>
               {checkInStatus === 'present' ? 'Present ' : checkInStatus === 'late' ? 'Late ' : 'Absent '}
             </Text>
             {checkInStatus === 'present'
               ? <CheckIcon size={12} color={GREEN} />
               : checkInStatus === 'late'
-                ? <WarningIcon size={12} color="#F59E0B" />
+                ? <WarningIcon size={12} color={AMBER} />
                 : <CrossIcon size={12} color={RED} />
             }
           </View>
@@ -1016,7 +1120,12 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(245,158,11,0.35)',
     paddingHorizontal: 14, paddingVertical: 10,
   },
+  // Used on the dark GPS step, where the warnBox sits over DARK_BG.
   warnText: { flex: 1, fontSize: 12.5, color: '#FCD9A0', lineHeight: 18 },
+  // Used on the light Confirm step, where the warnBox sits over a light
+  // background — the tan warnText above is unreadable there, so this
+  // uses a dark amber/brown instead for proper contrast.
+  warnTextOnLight: { flex: 1, fontSize: 12.5, color: '#92400E', lineHeight: 18, fontWeight: '600' },
 
   continueBtn: {
     backgroundColor: GREEN, borderRadius: 14, paddingVertical: 16,
@@ -1025,6 +1134,14 @@ const styles = StyleSheet.create({
   },
   continueBtnDisabled: { backgroundColor: '#3A4A3A', shadowOpacity: 0 },
   continueBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+
+  // Shown instead of "Continue to Camera" when the user is confirmed
+  // to be outside the geofence — takes them straight to an Absent record.
+  absentBtn: {
+    backgroundColor: RED, borderRadius: 14, paddingVertical: 16,
+    alignItems: 'center', marginTop: 4,
+    shadowColor: RED, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 8,
+  },
 
   cameraStep: {
     flex: 1, backgroundColor: '#0D1117',

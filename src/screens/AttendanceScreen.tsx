@@ -56,23 +56,46 @@ function StatusBadge({ status }: { status: AttendanceEntry['status'] }) {
 }
 
 function mapRecordToEntry(record: AttendanceRecord, day: Date): AttendanceEntry {
-  const timeIn = new Date(record.check_in_time).toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
   const statusMap: Record<AttendanceRecord['status'], AttendanceEntry['status']> = {
     present: 'Present',
     late: 'Late',
     absent: 'Absent',
   };
+  const status = statusMap[record.status];
+  const date = day.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+
+  // Absent entries show ONLY the date and the status badge — no check-in
+  // time and no address, even though some Absent records (e.g. saved via
+  // "Mark as Absent") still carry a real check_in_time/address in the DB.
+  if (status === 'Absent') {
+    return {
+      id: record.id,
+      date,
+      timeIn: '',
+      timeOut: '--',
+      status,
+      location: '',
+      hours: '',
+    };
+  }
+
+  const timeIn = new Date(record.check_in_time).toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
   return {
     id: record.id,
-    date: day.toLocaleDateString('en-US', { month: 'short', day: '2-digit' }),
+    date,
     timeIn,
     timeOut: '--',
-    status: statusMap[record.status],
-    location: record.address || 'Location unavailable',
-    hours: '--',
+    status,
+    // Empty string (not a placeholder) when no address was captured —
+    // the UI hides the row entirely rather than showing a dash.
+    location: record.address || '',
+    // No check-out/duration tracking exists yet, so there's no real
+    // "hours" value to show — left empty until that feature exists.
+    hours: '',
   };
 }
 
@@ -137,14 +160,16 @@ export default function AttendanceScreen() {
         if (record) {
           built.push(mapRecordToEntry(record, d));
         } else if (isWorkday && day < todayDate) {
+          // No check-in record exists for this past workday at all —
+          // everything here is genuinely empty, not just unavailable.
           built.push({
             id: `absent-${year}-${month}-${day}`,
             date: d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' }),
-            timeIn: '--',
-            timeOut: '--',
+            timeIn: '',
+            timeOut: '',
             status: 'Absent',
-            location: '--',
-            hours: '0h',
+            location: '',
+            hours: '',
           });
         }
       }
@@ -290,7 +315,7 @@ export default function AttendanceScreen() {
             />
           </View>
           <View style={styles.filterRow}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
               <View style={styles.filterChips}>
                 {(['All', 'Present', 'Late', 'Absent'] as FilterType[]).map(f => (
                   <TouchableOpacity
@@ -330,23 +355,30 @@ export default function AttendanceScreen() {
                 <View key={entry.id} style={[styles.entryRow, { borderBottomColor: borderColor }, idx === filtered.length - 1 && styles.noBorderBottom]}>
                   <View style={styles.entryLeft}>
                     <Text style={[styles.entryDate, { color: textColor }]}>{entry.date}</Text>
-                    {entry.status !== 'Absent' ? (
+
+                    {/* Only shown when a real check-in time exists — hidden
+                        entirely for Absent days, instead of a dash. */}
+                    {entry.timeIn ? (
                       <Text style={[styles.entryTime, { color: subColor }]}>Checked in {entry.timeIn}</Text>
-                    ) : (
-                      <Text style={[styles.entryTime, { color: subColor }]}>-- : --</Text>
-                    )}
-                    <View style={styles.entryLocationRow}>
-                      <View style={styles.entryLocationIcon}>
-                        <MapPinIcon size={11} color={subColor} />
+                    ) : null}
+
+                    {/* Only shown when a real address exists. */}
+                    {entry.location ? (
+                      <View style={styles.entryLocationRow}>
+                        <View style={styles.entryLocationIcon}>
+                          <MapPinIcon size={11} color={subColor} />
+                        </View>
+                        <Text style={[styles.entryLocation, { color: subColor }]} numberOfLines={2}>
+                          {entry.location}
+                        </Text>
                       </View>
-                      <Text style={[styles.entryLocation, { color: subColor }]} numberOfLines={2}>
-                        {entry.location}
-                      </Text>
-                    </View>
+                    ) : null}
                   </View>
                   <View style={styles.entryRight}>
                     <StatusBadge status={entry.status} />
-                    <Text style={[styles.entryHours, { color: subColor }]}>{entry.hours}</Text>
+                    {entry.hours ? (
+                      <Text style={[styles.entryHours, { color: subColor }]}>{entry.hours}</Text>
+                    ) : null}
                   </View>
                 </View>
               ))}
@@ -458,16 +490,21 @@ const styles = StyleSheet.create({
   searchRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, gap: 8, marginBottom: 12 },
   searchInput: { flex: 1, fontSize: 13 },
 
-  filterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  filterChips: { flexDirection: 'row', gap: 8 },
-  chip: { backgroundColor: '#F0F0F5', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7 },
+  // ── Filter row: filterScroll stays bounded to the space left of the
+  // Export button (flex: 1 + flexShrink: 0 on the button), and an explicit
+  // gap on the row guarantees a real, fixed gap between the last chip and
+  // the button so they can never sit flush against each other. ──
+  filterRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  filterScroll: { flex: 1 },
+  filterChips: { flexDirection: 'row', gap: 6, paddingRight: 4 },
+  chip: { backgroundColor: '#F0F0F5', borderRadius: 20, paddingHorizontal: 9, paddingVertical: 6 },
   chipActive: { backgroundColor: PURPLE },
-  chipText: { fontSize: 12, color: '#888', fontWeight: '600' },
+  chipText: { fontSize: 11.5, color: '#888', fontWeight: '600' },
   chipTextActive: { color: '#FFFFFF' },
   exportBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     backgroundColor: GREEN, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8,
-    minWidth: 90,
+    minWidth: 90, flexShrink: 0,
   },
   exportContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   exportText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
@@ -478,8 +515,6 @@ const styles = StyleSheet.create({
   noBorderBottom: { borderBottomWidth: 0 },
   entriesList: { gap: 0 },
 
-  // ── Entry row: entryLeft now takes flexible width and entryLocation wraps,
-  // so a long address no longer pushes the status badge off-screen. ──
   entryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 14, borderBottomWidth: 1 },
   entryLeft: { flex: 1, paddingRight: 12, gap: 3 },
   entryDate: { fontSize: 14, fontWeight: '700' },

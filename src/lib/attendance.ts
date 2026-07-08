@@ -45,6 +45,10 @@ export const uploadAttendancePhoto = async (photoUri: string, userId: string): P
 // org_id and status (present/absent, computed from the geofence
 // check on the CheckIn screen) are now supplied by the caller
 // instead of being recalculated here from the clock.
+//
+// photoUri is optional: when the user is outside the geofence and
+// marks themselves Absent directly, no camera step is shown, so
+// there's no photo to upload — photo_url is simply saved as null.
 // ─────────────────────────────────────────
 export const saveAttendance = async (checkInData: CheckInData): Promise<{ success: boolean; error?: string; status?: 'present' | 'late' | 'absent' }> => {
   try {
@@ -59,8 +63,10 @@ export const saveAttendance = async (checkInData: CheckInData): Promise<{ succes
       return { success: false, error: 'No organization found for this user. Please complete organization setup first.' };
     }
 
-    // Upload photo first
-    const photoUrl = await uploadAttendancePhoto(checkInData.photoUri, user.id);
+    // Upload photo only if one was captured (skipped for direct Absent marking)
+    const photoUrl = checkInData.photoUri
+      ? await uploadAttendancePhoto(checkInData.photoUri, user.id)
+      : null;
 
     // Insert attendance record into Supabase
     const { error } = await supabase.from('attendance').insert({

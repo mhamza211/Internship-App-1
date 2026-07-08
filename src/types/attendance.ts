@@ -16,7 +16,9 @@ export interface AttendanceRecord {
 export interface CheckInData {
   latitude: number;
   longitude: number;
-  photoUri: string;
+  // Optional — omitted when marking Absent directly from outside
+  // the geofence, since no camera step is shown in that case.
+  photoUri?: string;
   address?: string;
   orgId: string;
   status: 'present' | 'late' | 'absent';
